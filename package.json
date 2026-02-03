@@ -48,6 +48,7 @@
     "@types/node": "^20.14.0",
     "@types/ws": "^8.5.10",
     "@types/node-cron": "^3.0.11",
+    "@whiskeysockets/baileys": "^6.0.0",
     "@types/mime-types": "^2.1.4",
     "@types/form-data": "^2.5.10",
     "eslint": "^9.0.0",

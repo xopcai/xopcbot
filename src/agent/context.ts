@@ -2,20 +2,39 @@ import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { Message, LLMMessage } from '../types/index.js';
 import { SessionManager } from '../session/index.js';
+import { SkillsLoader } from './skills/index.js';
 
 const BOOTSTRAP_FILES = ['AGENTS.md', 'SOUL.md', 'USER.md', 'TOOLS.md', 'IDENTITY.md'];
 
 export class ContextBuilder {
+  private skillsLoader: SkillsLoader;
+
   constructor(
     private workspace: string,
     private sessionManager: SessionManager
-  ) {}
+  ) {
+    this.skillsLoader = new SkillsLoader(workspace);
+  }
 
   buildSystemPrompt(skillNames?: string[]): string {
     const parts: string[] = [];
     
     // Core identity
     parts.push(this.getIdentity());
+    
+    // Skills summary
+    const skillsSummary = this.skillsLoader.buildSkillsSummary();
+    if (skillsSummary) {
+      parts.push(`# Skills\n\n${skillsSummary}`);
+    }
+    
+    // Load specific skills if requested
+    if (skillNames && skillNames.length > 0) {
+      const skillsContent = this.skillsLoader.loadSkillsContent(skillNames);
+      if (skillsContent) {
+        parts.push(`# Active Skills\n\n${skillsContent}`);
+      }
+    }
     
     // Bootstrap files
     const bootstrap = this.loadBootstrapFiles();
@@ -44,6 +63,7 @@ You are xopcbot, a helpful AI assistant. You have access to tools that allow you
 - Search the web and fetch web pages
 - Send messages to users on chat channels
 - Spawn subagents for complex background tasks
+- Use skills to extend your capabilities
 
 ## Current Time
 ${now}
@@ -52,6 +72,12 @@ ${now}
 Your workspace is at: ${workspacePath}
 - Memory files: ${workspacePath}/memory/MEMORY.md
 - Daily notes: ${workspacePath}/memory/YYYY-MM-DD.md
+- Custom skills: ${workspacePath}/skills/<skill-name>/SKILL.md
+
+## Using Skills
+You have access to skills that provide specialized capabilities. Skills are located at:
+- Built-in: <agent>/skills/<skill-name>/SKILL.md
+- Custom: ${workspacePath}/skills/<skill-name>/SKILL.md
 
 IMPORTANT: When responding to direct questions or conversations, reply directly with your text response.
 Only use the 'message' tool when you need to send a message to a specific chat channel.

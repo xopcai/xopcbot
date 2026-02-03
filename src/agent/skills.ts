@@ -11,7 +11,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
 
-const BUILTIN_SKILLS_DIR = join(dirname(new URL(import.meta.url).pathname), 'skills');
+const BUILTIN_SKILLS_DIR = join(dirname(new URL(import.meta.url).pathname), '../skills');
 
 // Skill metadata interface
 export interface SkillMetadata {

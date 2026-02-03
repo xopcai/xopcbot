@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { Message, LLMMessage } from '../types/index.js';
 import { SessionManager } from '../session/index.js';
-import { SkillsLoader } from '../skills/index.js';
+import { SkillsLoader } from './skills.js';
 
 const BOOTSTRAP_FILES = ['AGENTS.md', 'SOUL.md', 'USER.md', 'TOOLS.md', 'IDENTITY.md'];
 

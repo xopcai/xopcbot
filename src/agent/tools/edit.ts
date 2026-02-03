@@ -1,4 +1,5 @@
 import { Tool } from './base.js';
+import { execSync } from 'child_process';
 
 export class EditFileTool extends Tool {
   readonly name = 'edit_file';
@@ -18,12 +19,35 @@ export class EditFileTool extends Tool {
     const path = String(params.path);
     const oldText = String(params.old_text);
     const newText = String(params.new_text);
+    
     try {
-      const { readFileSync, writeFileSync, existsSync } = await import('fs');
-      if (!existsSync(path)) return `Error: File not found: ${path}`;
-      const content = readFileSync(path, 'utf-8');
-      if (!content.includes(oldText)) return `Error: old_text not found in file.`;
-      writeFileSync(path, content.replace(oldText, newText, 1), 'utf-8');
+      // Use Python for reliable text replacement
+      const escapedPath = path.replace(/'/g, "'\\''");
+      const escapedOld = oldText.replace(/'/g, "\\'");
+      const escapedNew = newText.replace(/'/g, "\\'");
+      
+      const pythonScript = `python3 -c "
+import sys
+path = '${escapedPath}'
+old = '''${escapedOld}'''
+new = '''${escapedNew}'''
+with open(path, 'r', encoding='utf-8') as f:
+    content = f.read()
+if old not in content:
+    print('old_text_not_found')
+    sys.exit(1)
+content = content.replace(old, new, 1)
+with open(path, 'w', encoding='utf-8') as f:
+    f.write(content)
+print('ok')
+"`;
+      
+      const result = execSync(pythonScript, { encoding: 'utf-8' }).trim();
+      
+      if (result === 'old_text_not_found') {
+        return 'Error: old_text not found in file.';
+      }
+      
       return `Successfully edited ${path}`;
     } catch (error) {
       return `Error editing file: ${error instanceof Error ? error.message : String(error)}`;

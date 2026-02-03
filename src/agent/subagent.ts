@@ -3,7 +3,7 @@ import { ToolRegistry } from './tools/index.js';
 import { ReadFileTool, WriteFileTool, ListDirTool } from './tools/index.js';
 import { ExecTool } from './tools/shell.js';
 import { WebSearchTool, WebFetchTool } from './tools/index.js';
-import { InboundMessage, ToolSchema } from '../types/index.js';
+import { InboundMessage, LLMMessage } from '../types/index.js';
 import { MessageBus } from '../bus/index.js';
 import { LLMProvider } from '../providers/index.js';
 
@@ -51,7 +51,7 @@ export class SubagentManager {
       tools.register(new WebFetchTool());
 
       const systemPrompt = this.buildSubagentPrompt(task);
-      const messages = [
+      const messages: LLMMessage[] = [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: task },
       ];
@@ -79,21 +79,27 @@ export class SubagentManager {
             id: tc.id,
             type: 'function' as const,
             function: {
-              name: tc.name,
-              arguments: tc.arguments,
+              name: tc.function.name,
+              arguments: tc.function.arguments,
             },
           }));
           
           messages.push({
-            role: 'assistant',
+            role: 'assistant' as const,
             content: response.content || '',
             tool_calls: toolCallsForMessage,
           });
 
-          for (const toolCall of response.tool_calls) {
-            console.log(`Subagent [${taskId}] executing: ${toolCall.name}`);
-            const result = await tools.execute(toolCall.name, toolCall.arguments);
-            messages.push({ role: 'tool', content: result });
+          for (const tc of response.tool_calls) {
+            console.log(`Subagent [${taskId}] executing: ${tc.function.name}`);
+            let args: Record<string, unknown> = {};
+            try {
+              args = JSON.parse(tc.function.arguments);
+            } catch {
+              // Keep empty object if parsing fails
+            }
+            const result = await tools.execute(tc.function.name, args);
+            messages.push({ role: 'tool' as const, content: result });
           }
         } else {
           finalResult = response.content;

@@ -9,7 +9,7 @@ import { LLMProvider } from '../providers/index.js';
 import { ContextBuilder } from './context.js';
 import { SubagentManager } from './subagent.js';
 import { SessionManager } from '../session/index.js';
-import { InboundMessage, OutboundMessage, ToolCall, ToolSchema } from '../types/index.js';
+import { InboundMessage, OutboundMessage, ToolCall } from '../types/index.js';
 
 export class AgentLoop {
   private context: ContextBuilder;
@@ -116,19 +116,25 @@ export class AgentLoop {
       if (response.tool_calls.length > 0) {
         const toolCallsForMessage: ToolCall[] = response.tool_calls.map(tc => ({
           id: tc.id,
-          type: 'function',
+          type: 'function' as const,
           function: {
-            name: tc.name,
-            arguments: tc.arguments,
+            name: tc.function.name,
+            arguments: tc.function.arguments,
           },
         }));
         
         this.context.addAssistantMessage(messages, response.content || '', toolCallsForMessage);
 
-        for (const toolCall of response.tool_calls) {
-          console.log(`Executing tool: ${toolCall.name}`);
-          const result = await this.tools.execute(toolCall.name, toolCall.arguments);
-          this.context.addToolResult(messages, toolCall.id, toolCall.name, result);
+        for (const tc of response.tool_calls) {
+          console.log(`Executing tool: ${tc.function.name}`);
+          let args: Record<string, unknown> = {};
+          try {
+            args = JSON.parse(tc.function.arguments);
+          } catch {
+            // Keep empty object if parsing fails
+          }
+          const result = await this.tools.execute(tc.function.name, args);
+          this.context.addToolResult(messages, tc.id, tc.function.name, result);
         }
       } else {
         finalContent = response.content;
@@ -183,18 +189,24 @@ export class AgentLoop {
       if (response.tool_calls.length > 0) {
         const toolCallsForMessage: ToolCall[] = response.tool_calls.map(tc => ({
           id: tc.id,
-          type: 'function',
+          type: 'function' as const,
           function: {
-            name: tc.name,
-            arguments: tc.arguments,
+            name: tc.function.name,
+            arguments: tc.function.arguments,
           },
         }));
         
         this.context.addAssistantMessage(messages, response.content || '', toolCallsForMessage);
 
-        for (const toolCall of response.tool_calls) {
-          const result = await this.tools.execute(toolCall.name, toolCall.arguments);
-          this.context.addToolResult(messages, toolCall.id, toolCall.name, result);
+        for (const tc of response.tool_calls) {
+          let args: Record<string, unknown> = {};
+          try {
+            args = JSON.parse(tc.function.arguments);
+          } catch {
+            // Keep empty object if parsing fails
+          }
+          const result = await this.tools.execute(tc.function.name, args);
+          this.context.addToolResult(messages, tc.id, tc.function.name, result);
         }
       } else {
         finalContent = response.content;

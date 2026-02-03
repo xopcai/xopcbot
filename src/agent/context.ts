@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { Message, LLMMessage } from '../../types/index.js';
-import { SessionManager } from '../../session/index.js';
+import { Message, LLMMessage } from '../types/index.js';
+import { SessionManager } from '../session/index.js';
 
 const BOOTSTRAP_FILES = ['AGENTS.md', 'SOUL.md', 'USER.md', 'TOOLS.md', 'IDENTITY.md'];
 

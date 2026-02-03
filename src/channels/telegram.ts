@@ -1,6 +1,6 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { BaseChannel } from './base.js';
-import { OutboundMessage } from '../../types/index.js';
+import { OutboundMessage } from '../types/index.js';
 import { MessageBus } from '../bus/index.js';
 
 export class TelegramChannel extends BaseChannel {

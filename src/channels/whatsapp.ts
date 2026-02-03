@@ -1,4 +1,4 @@
-import { InboundMessage, OutboundMessage } from '../../types/index.js';
+import { InboundMessage, OutboundMessage } from '../types/index.js';
 import { BaseChannel } from './base.js';
 import { MessageBus } from '../bus/index.js';
 

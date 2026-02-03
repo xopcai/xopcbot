@@ -89,25 +89,25 @@ export interface SessionInfo {
   path: string;
 }
 
-// Config Types
+// Config Types - all optional for flexibility
 export interface Config {
-  agents: AgentsConfig;
-  channels: ChannelsConfig;
-  providers: ProvidersConfig;
-  gateway: GatewayConfig;
-  tools: ToolsConfig;
+  agents?: AgentsConfig;
+  channels?: ChannelsConfig;
+  providers?: ProvidersConfig;
+  gateway?: GatewayConfig;
+  tools?: ToolsConfig;
 }
 
 export interface AgentsConfig {
-  defaults: AgentDefaults;
+  defaults?: AgentDefaults;
 }
 
 export interface AgentDefaults {
-  workspace: string;
-  model: string;
-  max_tokens: number;
-  temperature: number;
-  max_tool_iterations: number;
+  workspace?: string;
+  model?: string;
+  max_tokens?: number;
+  temperature?: number;
+  max_tool_iterations?: number;
 }
 
 export interface ChannelsConfig {
@@ -116,15 +116,15 @@ export interface ChannelsConfig {
 }
 
 export interface TelegramConfig {
-  enabled: boolean;
-  token: string;
-  allow_from: string[];
+  enabled?: boolean;
+  token?: string;
+  allow_from?: string[];
 }
 
 export interface WhatsAppConfig {
-  enabled: boolean;
-  bridge_url: string;
-  allow_from: string[];
+  enabled?: boolean;
+  bridge_url?: string;
+  allow_from?: string[];
 }
 
 export interface ProvidersConfig {
@@ -138,13 +138,13 @@ export interface ProvidersConfig {
 }
 
 export interface ProviderConfig {
-  api_key: string;
+  api_key?: string;
   api_base?: string;
 }
 
 export interface GatewayConfig {
-  host: string;
-  port: number;
+  host?: string;
+  port?: number;
 }
 
 export interface ToolsConfig {
@@ -152,12 +152,12 @@ export interface ToolsConfig {
 }
 
 export interface WebToolsConfig {
-  search: WebSearchConfig;
+  search?: WebSearchConfig;
 }
 
 export interface WebSearchConfig {
-  api_key: string;
-  max_results: number;
+  api_key?: string;
+  max_results?: number;
 }
 
 // Cron Types

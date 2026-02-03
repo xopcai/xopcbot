@@ -1,5 +1,4 @@
 import { Command } from 'commander';
-import { Gateway } from './gateway.js';
 
 export function createGatewayCommand(): Command {
   const cmd = new Command('gateway')
@@ -7,9 +6,9 @@ export function createGatewayCommand(): Command {
     .option('--host <address>', 'Host to bind to', '0.0.0.0')
     .option('--port <number>', 'Port to listen on', '18790')
     .action(async (options) => {
+      const { Gateway } = await import('./gateway.js');
       const gateway = new Gateway();
       
-      // Handle shutdown
       const shutdown = async () => {
         await gateway.stop();
         process.exit(0);

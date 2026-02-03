@@ -3,13 +3,13 @@ import { ReadFileTool, WriteFileTool, EditFileTool, ListDirTool } from './tools/
 import { ExecTool } from './tools/shell.js';
 import { WebSearchTool, WebFetchTool } from './tools/index.js';
 import { MessageTool } from './tools/message.js';
-import { MessageTool as SpawnTool } from './tools/spawn.js';
+import { SpawnTool } from './tools/spawn.js';
 import { MessageBus } from '../bus/index.js';
 import { LLMProvider } from '../providers/index.js';
 import { ContextBuilder } from './context.js';
 import { SubagentManager } from './subagent.js';
 import { SessionManager } from '../session/index.js';
-import { InboundMessage, OutboundMessage, ToolCall } from '../types/index.js';
+import { InboundMessage, OutboundMessage, ToolCall, ToolSchema } from '../types/index.js';
 
 export class AgentLoop {
   private context: ContextBuilder;
@@ -35,27 +35,20 @@ export class AgentLoop {
   }
 
   private registerDefaultTools(): void {
-    // File tools
     this.tools.register(new ReadFileTool());
     this.tools.register(new WriteFileTool());
     this.tools.register(new EditFileTool());
     this.tools.register(new ListDirTool());
-    
-    // Shell tool
     this.tools.register(new ExecTool(this.workspace));
-    
-    // Web tools
     this.tools.register(new WebSearchTool(this.braveApiKey));
     this.tools.register(new WebFetchTool());
     
-    // Message tool
     const messageTool = new MessageTool();
     messageTool.setSendCallback(async (msg) => {
       await this.bus.publishOutbound(msg);
     });
     this.tools.register(messageTool);
     
-    // Spawn tool
     const spawnTool = new SpawnTool();
     spawnTool.setCallback(async (task, label, channel, chatId) => {
       return this.subagents.spawn(task, label, channel, chatId);
@@ -84,17 +77,14 @@ export class AgentLoop {
   }
 
   async processMessage(msg: InboundMessage): Promise<OutboundMessage | null> {
-    // Handle system messages
     if (msg.channel === 'system') {
       return this.processSystemMessage(msg);
     }
 
     console.log(`Processing message from ${msg.channel}:${msg.sender_id}`);
 
-    // Get or create session
     const session = this.sessions.getOrCreate(msg.content || 'cli:direct');
 
-    // Update tool contexts
     const messageTool = this.tools.get('message') as MessageTool | undefined;
     if (messageTool) {
       messageTool.setDefaultTarget(msg.channel, msg.chat_id);
@@ -105,43 +95,36 @@ export class AgentLoop {
       spawnTool.setDefaultTarget(msg.channel, msg.chat_id);
     }
 
-    // Build messages
-    const messages = this.context.buildMessages(
-      session.messages,
-      msg.content
-    );
-
-    // Agent loop
+    const messages = this.context.buildMessages(session.messages, msg.content);
     let iteration = 0;
     let finalContent: string | null = null;
+    const defaultModel = this.model || this.provider.getDefaultModel();
 
     while (iteration < this.maxIterations) {
       iteration++;
 
+      const toolDefs = this.tools.getDefinitions().map(t => t.function);
+
       const response = await this.provider.chat(
         messages,
-        this.tools.getDefinitions().map(t => t.function) as ToolCall[],
-        this.model || this.provider.getDefaultModel(),
+        toolDefs,
+        defaultModel,
         8192,
         0.7
       );
 
       if (response.tool_calls.length > 0) {
-        // Add assistant message with tool calls
-        this.context.addAssistantMessage(
-          messages,
-          response.content || '',
-          response.tool_calls.map(tc => ({
-            id: tc.id,
-            type: 'function' as const,
-            function: {
-              name: tc.name,
-              arguments: JSON.stringify(tc.arguments),
-            },
-          }))
-        );
+        const toolCallsForMessage: ToolCall[] = response.tool_calls.map(tc => ({
+          id: tc.id,
+          type: 'function',
+          function: {
+            name: tc.name,
+            arguments: tc.arguments,
+          },
+        }));
+        
+        this.context.addAssistantMessage(messages, response.content || '', toolCallsForMessage);
 
-        // Execute tools
         for (const toolCall of response.tool_calls) {
           console.log(`Executing tool: ${toolCall.name}`);
           const result = await this.tools.execute(toolCall.name, toolCall.arguments);
@@ -157,22 +140,16 @@ export class AgentLoop {
       finalContent = "I've completed processing but have no response to give.";
     }
 
-    // Save to session
     session.messages.push({ role: 'user', content: msg.content, timestamp: new Date().toISOString() });
     session.messages.push({ role: 'assistant', content: finalContent, timestamp: new Date().toISOString() });
     this.sessions.save(session);
 
-    return {
-      channel: msg.channel,
-      chat_id: msg.chat_id,
-      content: finalContent,
-    };
+    return { channel: msg.channel, chat_id: msg.chat_id, content: finalContent };
   }
 
   private async processSystemMessage(msg: InboundMessage): Promise<OutboundMessage | null> {
     console.log(`Processing system message from ${msg.sender_id}`);
 
-    // Parse origin from chat_id (format: "channel:chat_id")
     let originChannel = 'cli';
     let originChatId = msg.chat_id;
     
@@ -185,40 +162,35 @@ export class AgentLoop {
     const sessionKey = `${originChannel}:${originChatId}`;
     const session = this.sessions.getOrCreate(sessionKey);
 
-    // Build messages
-    const messages = this.context.buildMessages(
-      session.messages,
-      msg.content
-    );
-
-    // Agent loop (limited iterations)
+    const messages = this.context.buildMessages(session.messages, msg.content);
     let iteration = 0;
     let finalContent: string | null = null;
+    const defaultModel = this.model || this.provider.getDefaultModel();
 
     while (iteration < this.maxIterations) {
       iteration++;
 
+      const toolDefs = this.tools.getDefinitions().map(t => t.function);
+
       const response = await this.provider.chat(
         messages,
-        this.tools.getDefinitions().map(t => t.function) as ToolCall[],
-        this.model || this.provider.getDefaultModel(),
+        toolDefs,
+        defaultModel,
         8192,
         0.7
       );
 
       if (response.tool_calls.length > 0) {
-        this.context.addAssistantMessage(
-          messages,
-          response.content || '',
-          response.tool_calls.map(tc => ({
-            id: tc.id,
-            type: 'function' as const,
-            function: {
-              name: tc.name,
-              arguments: JSON.stringify(tc.arguments),
-            },
-          }))
-        );
+        const toolCallsForMessage: ToolCall[] = response.tool_calls.map(tc => ({
+          id: tc.id,
+          type: 'function',
+          function: {
+            name: tc.name,
+            arguments: tc.arguments,
+          },
+        }));
+        
+        this.context.addAssistantMessage(messages, response.content || '', toolCallsForMessage);
 
         for (const toolCall of response.tool_calls) {
           const result = await this.tools.execute(toolCall.name, toolCall.arguments);
@@ -234,7 +206,6 @@ export class AgentLoop {
       finalContent = 'Background task completed.';
     }
 
-    // Save to session
     session.messages.push({ 
       role: 'user', 
       content: `[System: ${msg.sender_id}] ${msg.content}`,
@@ -243,11 +214,7 @@ export class AgentLoop {
     session.messages.push({ role: 'assistant', content: finalContent, timestamp: new Date().toISOString() });
     this.sessions.save(session);
 
-    return {
-      channel: originChannel,
-      chat_id: originChatId,
-      content: finalContent,
-    };
+    return { channel: originChannel, chat_id: originChatId, content: finalContent };
   }
 
   async processDirect(content: string, sessionKey = 'cli:direct'): Promise<string> {

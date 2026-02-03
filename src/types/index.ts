@@ -1,8 +1,7 @@
 // ============================================
-// xopcbot Core Types
+// xopcbot Core Types - Simplified
 // ============================================
 
-// Message Types
 export interface InboundMessage {
   channel: string;
   sender_id: string;
@@ -23,11 +22,10 @@ export interface Message {
   content: string;
   timestamp?: string;
   tool_call_id?: string;
-  tool_calls?: ToolCall[];
   name?: string;
 }
 
-// Tool Types
+// Tool types - simplified
 export interface ToolCall {
   id: string;
   type: 'function';
@@ -37,22 +35,6 @@ export interface ToolCall {
   };
 }
 
-export interface ToolSchema {
-  type: 'function';
-  function: {
-    name: string;
-    description: string;
-    parameters: Record<string, unknown>;
-  };
-}
-
-export interface ToolParameters {
-  type: 'object';
-  properties: Record<string, unknown>;
-  required?: string[];
-}
-
-// LLM Types
 export interface LLMMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string | null;
@@ -70,108 +52,26 @@ export interface LLMResponse {
   };
 }
 
-// Session Types
-export interface Session {
-  key: string;
-  messages: Message[];
-  created_at: string;
-  updated_at: string;
-  metadata?: Record<string, unknown>;
-}
-
-export interface SessionInfo {
-  key: string;
-  created_at: string;
-  updated_at: string;
-  path: string;
-}
-
-// Config Types
+// Config
 export interface Config {
-  agents: AgentsConfig;
-  channels: ChannelsConfig;
-  providers: ProvidersConfig;
-  gateway: GatewayConfig;
-  tools: ToolsConfig;
-}
-
-export interface AgentsConfig {
-  defaults: AgentDefaults;
-}
-
-export interface AgentDefaults {
-  workspace: string;
-  model: string;
-  max_tokens: number;
-  temperature: number;
-  max_tool_iterations: number;
-}
-
-export interface ChannelsConfig {
-  telegram?: TelegramConfig;
-  whatsapp?: WhatsAppConfig;
-}
-
-export interface TelegramConfig {
-  enabled: boolean;
-  token: string;
-  allow_from: string[];
-}
-
-export interface WhatsAppConfig {
-  enabled: boolean;
-  bridge_url: string;
-  allow_from: string[];
-}
-
-export interface ProvidersConfig {
-  anthropic?: ProviderConfig;
-  openai?: ProviderConfig;
-  openrouter?: ProviderConfig;
-  groq?: ProviderConfig;
-  zhipu?: ProviderConfig;
-  vllm?: ProviderConfig;
-  gemini?: ProviderConfig;
-}
-
-export interface ProviderConfig {
-  api_key: string;
-  api_base?: string;
-}
-
-export interface GatewayConfig {
-  host: string;
-  port: number;
-}
-
-export interface ToolsConfig {
-  web?: WebToolsConfig;
-}
-
-export interface WebToolsConfig {
-  search: WebSearchConfig;
-}
-
-export interface WebSearchConfig {
-  api_key: string;
-  max_results: number;
-}
-
-// Cron Types
-export interface CronJob {
-  id: string;
-  name?: string;
-  schedule: string;
-  message: string;
-  enabled: boolean;
-  created_at: string;
-}
-
-// Subagent Types
-export interface SubagentResult {
-  task_id: string;
-  label: string;
-  task: string;
-  result: string;
-  status: 'ok' | 'error';
+  agents: {
+    defaults: {
+      workspace: string;
+      model: string;
+      max_tokens: number;
+      temperature: number;
+      max_tool_iterations: number;
+    };
+  };
+  channels: {
+    telegram?: { enabled: boolean; token: string; allow_from: string[] };
+    whatsapp?: { enabled: boolean; bridge_url: string; allow_from: string[] };
+  };
+  providers: Record<string, { api_key: string; api_base?: string }>;
+  gateway: { host: string; port: number };
+  tools?: {
+    web?: {
+      search?: { api_key: string; max_results: number };
+    };
+  };
 }

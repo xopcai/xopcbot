@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { LLMProvider, ToolCallRequest } from './base.js';
+import { LLMProvider } from './base.js';
 import { LLMMessage, LLMResponse } from '../types/index.js';
 
 export class OpenAIProvider implements LLMProvider {
@@ -7,23 +7,13 @@ export class OpenAIProvider implements LLMProvider {
   private defaultModel: string;
 
   constructor(apiKey: string, apiBase?: string, defaultModel = 'gpt-4o') {
-    this.client = new OpenAI({
-      apiKey,
-      baseURL: apiBase,
-    });
+    this.client = new OpenAI({ apiKey, baseURL: apiBase });
     this.defaultModel = defaultModel;
   }
 
   async chat(
     messages: LLMMessage[],
-    tools?: Array<{
-      type: 'function';
-      function: {
-        name: string;
-        description: string;
-        parameters: Record<string, unknown>;
-      };
-    }>,
+    tools: Array<Record<string, unknown>>[] = [],
     model?: string,
     maxTokens = 4096,
     temperature = 0.7
@@ -43,24 +33,22 @@ export class OpenAIProvider implements LLMProvider {
       const choice = response.choices[0];
       const message = choice.message;
 
-      const toolCalls: ToolCallRequest[] = [];
-      if (message.tool_calls) {
-        for (const tc of message.tool_calls) {
-          let args = tc.function.arguments;
-          if (typeof args === 'string') {
-            try {
-              args = JSON.parse(args);
-            } catch {
-              args = { raw: args };
-            }
-          }
-          toolCalls.push({
-            id: tc.id,
-            name: tc.function.name,
-            arguments: args as Record<string, unknown>,
-          });
+      const toolCalls: ToolCall[] = message.tool_calls?.map(tc => {
+        let args: Record<string, unknown> = {};
+        try {
+          args = JSON.parse(tc.function.arguments);
+        } catch {
+          args = { raw: tc.function.arguments };
         }
-      }
+        return {
+          id: tc.id,
+          type: 'function' as const,
+          function: {
+            name: tc.function.name,
+            arguments: JSON.stringify(args),
+          },
+        };
+      }) || [];
 
       const usage = response.usage ? {
         prompt_tokens: response.usage.prompt_tokens,

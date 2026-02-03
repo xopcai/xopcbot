@@ -1,51 +1,40 @@
 import { LLMProvider } from './base.js';
 import { OpenAIProvider } from './openai.js';
 import { AnthropicProvider } from './anthropic.js';
-import { Config } from '../config/index.js';
+import { Config } from '../types/index.js';
 
 export function createProvider(config: Config): LLMProvider {
-  const apiKey = config.providers.openrouter?.api_key ||
-    config.providers.anthropic?.api_key ||
-    config.providers.openai?.api_key ||
-    '';
+  const providers = config.providers || {};
+  const openrouter = providers.openrouter;
+  const anthropic = providers.anthropic;
+  const openai = providers.openai;
+  const vllm = providers.vllm;
 
-  const apiBase = config.providers.openrouter?.api_base;
-
-  // Determine provider type based on model or config
+  const apiKey = openrouter?.api_key || anthropic?.api_key || openai?.api_key || vllm?.api_key || '';
+  const apiBase = openrouter?.api_base || vllm?.api_base;
   const model = config.agents.defaults.model;
 
-  // OpenRouter (recommended - supports all models)
-  if (config.providers.openrouter?.api_key) {
+  // OpenRouter
+  if (openrouter?.api_key) {
     return new OpenAIProvider(apiKey, apiBase, model);
   }
 
   // Anthropic
   if (model.includes('anthropic') || model.includes('claude')) {
-    return new AnthropicProvider(
-      config.providers.anthropic?.api_key || apiKey,
-      model.replace('anthropic/', '')
-    );
+    return new AnthropicProvider(anthropic?.api_key || apiKey, model.replace('anthropic/', ''));
   }
 
-  // OpenAI compatible (OpenAI, Azure, etc.)
+  // OpenAI compatible
   if (model.includes('gpt') || model.includes('openai')) {
-    return new OpenAIProvider(
-      config.providers.openai?.api_key || apiKey,
-      config.providers.openai?.api_base,
-      model.replace('openai/', '')
-    );
+    return new OpenAIProvider(openai?.api_key || apiKey, openai?.api_base, model.replace('openai/', ''));
   }
 
-  // vLLM or other OpenAI-compatible endpoints
-  if (config.providers.vllm?.api_base) {
-    return new OpenAIProvider(
-      config.providers.vllm?.api_key || 'dummy',
-      config.providers.vllm.api_base,
-      model
-    );
+  // vLLM
+  if (vllm?.api_base) {
+    return new OpenAIProvider(vllm.api_key || 'dummy', vllm.api_base, model);
   }
 
-  // Default to OpenAI compatible with OpenRouter-style model names
+  // Default
   return new OpenAIProvider(apiKey, apiBase, model);
 }
 

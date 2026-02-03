@@ -1,44 +1,39 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { LLMProvider, ToolCallRequest } from './base.js';
-import { LLMMessage, LLMResponse } from '../types/index.js';
+import { LLMProvider } from './base.js';
+import { LLMMessage, LLMResponse, ToolCall } from '../types/index.js';
 
 export class AnthropicProvider implements LLMProvider {
   private client: Anthropic;
   private defaultModel: string;
 
   constructor(apiKey: string, defaultModel = 'claude-opus-4-5') {
-    this.client = new Anthropic({
-      apiKey,
-    });
+    this.client = new Anthropic({ apiKey });
     this.defaultModel = defaultModel;
   }
 
   async chat(
     messages: LLMMessage[],
-    tools?: Array<{
-      type: 'function';
-      function: {
-        name: string;
-        description: string;
-        parameters: Record<string, unknown>;
-      };
-    }>,
+    tools: Array<Record<string, unknown>>[] = [],
     model?: string,
     maxTokens = 4096,
     temperature = 0.7
   ): Promise<LLMResponse> {
     const actualModel = model || this.defaultModel;
-
-    // Convert to Anthropic format
     const systemMessage = messages.find(m => m.role === 'system');
     const otherMessages = messages.filter(m => m.role !== 'system');
 
     try {
+      const anthropicTools: Anthropic.Tool[] | undefined = tools?.map((t: Record<string, unknown>) => ({
+        name: String(t.name),
+        description: String(t.description),
+        input_schema: { type: 'object' as const, properties: t.parameters },
+      }));
+
       const response = await this.client.messages.create({
         model: actualModel,
         max_tokens: maxTokens,
         temperature,
-        tools: tools as Anthropic.Tool[],
+        tools: anthropicTools,
         messages: otherMessages.map(m => ({
           role: m.role as 'user' | 'assistant',
           content: m.content as string,
@@ -46,20 +41,21 @@ export class AnthropicProvider implements LLMProvider {
         system: systemMessage?.content as string | undefined,
       });
 
-      const toolCalls: ToolCallRequest[] = [];
-      let content: string | null = null;
+      const toolCalls: ToolCall[] = response.content
+        .filter((block): block is Anthropic.ToolUseBlock => block.type === 'tool_use')
+        .map(tc => ({
+          id: tc.id,
+          type: 'function' as const,
+          function: {
+            name: tc.name,
+            arguments: JSON.stringify(tc.input),
+          },
+        }));
 
-      for (const block of response.content) {
-        if (block.type === 'text') {
-          content = (content ? content + '\n' : '') + block.text;
-        } else if (block.type === 'tool_use') {
-          toolCalls.push({
-            id: block.id,
-            name: block.name,
-            arguments: block.input as Record<string, unknown>,
-          });
-        }
-      }
+      const content = response.content
+        .filter(block => block.type === 'text')
+        .map(block => (block as Anthropic.TextBlock).text)
+        .join('\n') || null;
 
       const usage = response.usage ? {
         prompt_tokens: response.usage.input_tokens,

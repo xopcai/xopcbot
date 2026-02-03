@@ -1,4 +1,4 @@
-import { CronService } from './service.js';
+import { CronService } from '../cron/service.js';
 
 export interface HeartbeatConfig {
   intervalMs: number;

@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import { LLMProvider } from './base.js';
-import { LLMMessage, LLMResponse } from '../types/index.js';
+import { LLMMessage, LLMResponse, ToolCall } from '../types/index.js';
 
 export class OpenAIProvider implements LLMProvider {
   private client: OpenAI;
@@ -13,7 +13,11 @@ export class OpenAIProvider implements LLMProvider {
 
   async chat(
     messages: LLMMessage[],
-    tools: Array<Record<string, unknown>>[] = [],
+    tools?: Array<{
+      name: string;
+      description: string;
+      parameters: Record<string, unknown>;
+    }>,
     model?: string,
     maxTokens = 4096,
     temperature = 0.7
@@ -21,10 +25,19 @@ export class OpenAIProvider implements LLMProvider {
     const actualModel = model || this.defaultModel;
 
     try {
+      const openaiTools: OpenAI.Chat.ChatCompletionTool[] | undefined = tools?.map(t => ({
+        type: 'function' as const,
+        function: {
+          name: t.name,
+          description: t.description,
+          parameters: t.parameters,
+        },
+      }));
+
       const response = await this.client.chat.completions.create({
         model: actualModel,
         messages: messages as OpenAI.Chat.ChatCompletionMessageParam[],
-        tools: tools as OpenAI.Chat.ChatCompletionTool[],
+        tools: openaiTools,
         tool_choice: 'auto',
         max_tokens: maxTokens,
         temperature,

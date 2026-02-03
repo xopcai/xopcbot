@@ -13,7 +13,11 @@ export class AnthropicProvider implements LLMProvider {
 
   async chat(
     messages: LLMMessage[],
-    tools: Array<Record<string, unknown>>[] = [],
+    tools?: Array<{
+      name: string;
+      description: string;
+      parameters: Record<string, unknown>;
+    }>,
     model?: string,
     maxTokens = 4096,
     temperature = 0.7
@@ -23,9 +27,9 @@ export class AnthropicProvider implements LLMProvider {
     const otherMessages = messages.filter(m => m.role !== 'system');
 
     try {
-      const anthropicTools: Anthropic.Tool[] | undefined = tools?.map((t: Record<string, unknown>) => ({
-        name: String(t.name),
-        description: String(t.description),
+      const anthropicTools: Anthropic.Tool[] | undefined = tools?.map(t => ({
+        name: t.name,
+        description: t.description,
         input_schema: { type: 'object' as const, properties: t.parameters },
       }));
 

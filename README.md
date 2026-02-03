@@ -6,19 +6,21 @@
     <a href="#">![npm](https://img.shields.io/npm/v/xopcbot)</a>
     <a href="#">![node](https://img.shields.io/node/v/xopcbot)</a>
     <a href="#">![license](https://img.shields.io/license/MIT)</a>
+    <a href="#">![lint](https://img.shields.io/badge/lint-0%20errors-green)</a>
   </p>
 </div>
 
 **xopcbot** is an **ultra-lightweight** personal AI assistant, a Node.js + TypeScript port of [nanobot](https://github.com/HKUDS/nanobot).
 
-⚡️ Delivers core agent functionality in just **~4,000** lines of code.
+⚡️ Delivers core agent functionality in just **~2,800** lines of code.
 
 ## Features
 
-🪶 **Ultra-Lightweight**: Just ~4,000 lines of code  
-🔬 **Research-Ready**: Clean, readable code  
+🪶 **Ultra-Lightweight**: ~2,800 lines of TypeScript code  
+🔬 **Research-Ready**: Clean, readable, well-documented code  
 ⚡️ **Lightning Fast**: Node.js 22 + TypeScript  
-💎 **Easy-to-Use**: Simple CLI commands
+💎 **Easy-to-Use**: Simple CLI commands  
+🔧 **Type-Safe**: Full TypeScript with ESLint  
 
 ## Quick Start
 
@@ -61,24 +63,26 @@ Edit `~/.xopcbot/config.json`:
 # Single message
 npm run dev -- agent -m "What is 2+2?"
 
-# Interactive
+# Interactive mode
 npm run dev -- agent -i
 ```
 
-## Architecture
+### Start Gateway (with channels)
 
+```bash
+npm run dev -- gateway --port 18790
 ```
-xopcbot/
-├── src/
-│   ├── agent/          # 🧠 Core agent logic
-│   ├── bus/            # 🚌 Message routing
-│   ├── channels/       # 📱 Chat channels
-│   ├── cli/            # 🖥️ Commands
-│   ├── config/         # ⚙️ Configuration
-│   ├── providers/      # 🤖 LLM providers
-│   ├── session/        # 💬 Sessions
-│   └── types/          # 📝 TypeScript types
-```
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `onboard` | Initialize config and workspace |
+| `agent -m "..."` | Chat with agent |
+| `agent -i` | Interactive chat mode |
+| `gateway` | Start HTTP gateway server |
+| `cron list` | List scheduled tasks |
+| `cron add --schedule "0 9 * * *" --message "Good morning"` | Add task |
 
 ## Tech Stack
 
@@ -86,12 +90,52 @@ xopcbot/
 |-----------|------------|
 | Runtime | Node.js 22.x |
 | Language | TypeScript 5.x |
-| HTTP Framework | Hono 4.x |
+| CLI | Commander |
 | LLM SDK | OpenAI + Anthropic SDK |
 | Validation | Zod |
-| CLI | Commander |
 | Telegram | node-telegram-bot-api |
-| WhatsApp | Baileys |
+| WhatsApp | Baileys (placeholder) |
+| HTTP Server | Native http module |
+| Linting | TypeScript-ESLint |
+
+## Architecture
+
+```
+xopcbot/
+├── src/
+│   ├── agent/          # 🧠 Core agent logic
+│   │   ├── loop.ts     #   Agent loop (LLM ↔ tools)
+│   │   ├── context.ts  #   Context builder
+│   │   ├── memory.ts   #   Memory system
+│   │   ├── subagent.ts #   Background tasks
+│   │   └── tools/      #   Built-in tools
+│   ├── bus/            # 🚌 Message routing
+│   ├── channels/       # 📱 Chat channels
+│   ├── cli/            # 🖥️ Commands
+│   ├── config/         # ⚙️ Configuration
+│   ├── cron/           # ⏰ Scheduled tasks
+│   ├── heartbeat/      # 💓 Proactive wake-up
+│   ├── providers/      # 🤖 LLM providers
+│   ├── session/        # 💬 Conversations
+│   └── types/          # 📝 TypeScript types
+```
+
+## Development
+
+```bash
+# Run (no compile needed)
+npm run dev -- <command>
+
+# Lint
+npm run lint
+
+# Test (coming soon)
+npm run test
+```
+
+## Configuration
+
+See [`.env.example`](.env.example) for available options.
 
 ## License
 

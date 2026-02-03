@@ -1,4 +1,4 @@
-import { OutboundMessage, InboundMessage } from '../../types/index.js';
+import { OutboundMessage, InboundMessage } from '../types/index.js';
 import { MessageBus } from '../bus/index.js';
 
 export abstract class BaseChannel {

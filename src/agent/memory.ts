@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
-import { Message } from '../../types/index.js';
+import { Message } from '../types/index.js';
 
 export class MemoryStore {
   private memoryDir: string;

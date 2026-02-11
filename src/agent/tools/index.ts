@@ -1,11 +1,9 @@
 // Export all agent tools
-export {
-  readFileTool,
-  writeFileTool,
-  editFileTool,
-  listDirTool,
-  createShellTool,
-} from './filesystem.js';
+export { readFileTool } from './read.js';
+export { writeFileTool } from './write.js';
+export { editFileTool, type EditToolDetails } from './edit.js';
+export { listDirTool } from './list-dir.js';
+export { createShellTool } from './shell.js';
 
 export { createWebSearchTool, webFetchTool } from './web.js';
 

@@ -5,6 +5,17 @@ import { readFile, writeFile, mkdir, readdir } from 'fs/promises';
 import { dirname } from 'path';
 import { spawn } from 'child_process';
 
+// Import fuzzy matching utilities
+import {
+	normalizeToLF,
+	restoreLineEndings,
+	normalizeForFuzzyMatch,
+	fuzzyFindText,
+	stripBom,
+	generateDiffString,
+	type FuzzyMatchResult,
+} from './edit-diff.js';
+
 // =============================================================================
 // Read File Tool
 // =============================================================================
@@ -89,13 +100,19 @@ export const writeFileTool: AgentTool<typeof WriteFileSchema, {} > = {
 // =============================================================================
 const EditFileSchema = Type.Object({
   path: Type.String({ description: 'The file path to edit' }),
-  oldText: Type.String({ description: 'The text to replace' }),
+  oldText: Type.String({ description: 'The text to replace (supports fuzzy matching for minor whitespace/formatting differences)' }),
   newText: Type.String({ description: 'The replacement text' }),
 });
 
-export const editFileTool: AgentTool<typeof EditFileSchema, {} > = {
+export interface EditToolDetails {
+	diff?: string;
+	firstChangedLine?: number;
+	fuzzyMatchUsed?: boolean;
+}
+
+export const editFileTool: AgentTool<typeof EditFileSchema, EditToolDetails> = {
   name: 'edit_file',
-  description: 'Replace oldText with newText in a file. oldText must match exactly.',
+  description: 'Replace oldText with newText in a file. Uses fuzzy matching for minor whitespace/formatting differences.',
   parameters: EditFileSchema,
   label: '✏️ Edit File',
 
@@ -103,25 +120,90 @@ export const editFileTool: AgentTool<typeof EditFileSchema, {} > = {
     toolCallId: string,
     params: Static<typeof EditFileSchema>,
     _signal?: AbortSignal
-  ): Promise<AgentToolResult<{}>> {
+  ): Promise<AgentToolResult<EditToolDetails>> {
     try {
-      const content = await readFile(params.path, 'utf-8');
-      if (!content.includes(params.oldText)) {
+      const rawContent = await readFile(params.path, 'utf-8');
+
+      // Strip BOM before matching
+      const { text: content } = stripBom(rawContent);
+
+      // Detect original line ending
+      const lineEnding = detectLineEnding(rawContent);
+
+      // Normalize to LF for processing
+      const normalizedContent = normalizeToLF(content);
+      const normalizedOldText = normalizeToLF(params.oldText);
+      const normalizedNewText = normalizeToLF(params.newText);
+
+      // Try exact match first, then fuzzy match
+      const matchResult = fuzzyFindText(normalizedContent, normalizedOldText);
+
+      if (!matchResult.found) {
         return {
           content: [
             {
               type: 'text',
-              text: `Error: oldText not found in file. The text must match exactly.`,
+              text: `Error: oldText not found in file. The text must match exactly (with minor fuzzy matching for whitespace/formatting).`,
             },
           ],
           details: {},
         };
       }
-      const newContent = content.replace(params.oldText, params.newText);
-      await writeFile(params.path, newContent, 'utf-8');
+
+      // Check for multiple occurrences
+      const fuzzyContent = normalizeForFuzzyMatch(normalizedContent);
+      const fuzzyOldText = normalizeForFuzzyMatch(normalizedOldText);
+      const occurrences = fuzzyContent.split(fuzzyOldText).length - 1;
+
+      if (occurrences > 1) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error: Found ${occurrences} occurrences of the text. The text must be unique. Please provide more context to make it unique.`,
+            },
+          ],
+          details: {},
+        };
+      }
+
+      // Compute new content
+      const baseContent = matchResult.contentForReplacement;
+      const newContent =
+        baseContent.substring(0, matchResult.index) +
+        normalizedNewText +
+        baseContent.substring(matchResult.index + matchResult.matchLength);
+
+      // Restore original line endings
+      const finalContent = restoreLineEndings(newContent, lineEnding);
+      const originalWithReplacement = restoreLineEndings(baseContent, lineEnding);
+
+      // Check if it would actually change anything
+      if (originalWithReplacement === finalContent) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error: No changes would be made. The replacement produces identical content.`,
+            },
+          ],
+          details: {},
+        };
+      }
+
+      // Generate diff
+      const { diff, firstChangedLine } = generateDiffString(originalWithReplacement, finalContent);
+
+      // Write the file
+      await writeFile(params.path, finalContent, 'utf-8');
+
       return {
         content: [{ type: 'text', text: `File edited: ${params.path}` }],
-        details: {},
+        details: {
+          diff,
+          firstChangedLine,
+          fuzzyMatchUsed: matchResult.usedFuzzyMatch,
+        },
       };
     } catch (error) {
       return {
@@ -283,4 +365,19 @@ export function createShellTool(defaultWorkdir?: string): AgentTool<typeof Shell
       });
     },
   };
+}
+
+// =============================================================================
+// Helper Functions
+// =============================================================================
+
+/**
+ * Detect the line ending style of content
+ */
+function detectLineEnding(content: string): '\r\n' | '\n' {
+	const crlfIdx = content.indexOf('\r\n');
+	const lfIdx = content.indexOf('\n');
+	if (lfIdx === -1) return '\n';
+	if (crlfIdx === -1) return '\n';
+	return crlfIdx < lfIdx ? '\r\n' : '\n';
 }

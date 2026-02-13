@@ -1,12 +1,12 @@
-# Channel Configuration
+# 通道配置
 
-xopcbot supports multiple communication channels: Telegram, WhatsApp.
+xopcbot 支持多种通信通道：Telegram、WhatsApp。
 
-## Telegram Channel
+## Telegram 通道
 
-### Configuration
+### 配置
 
-Add to `~/.config/xopcbot/config.json`:
+在 `~/.config/xopcbot/config.json` 中添加：
 
 ```json
 {
@@ -22,46 +22,46 @@ Add to `~/.config/xopcbot/config.json`:
 }
 ```
 
-### Get Bot Token
+### 获取 Bot Token
 
-1. Open Telegram, search [@BotFather](https://t.me/BotFather)
-2. Send `/newbot` to create a new bot
-3. Follow prompts to set name and username
-4. Copy the generated token
+1. 打开 Telegram，搜索 [@BotFather](https://t.me/BotFather)
+2. 发送 `/newbot` 创建新机器人
+3. 按提示设置名称和用户名
+4. 复制生成的 Token
 
-### Configuration Fields
+### 配置字段
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `enabled` | boolean | Enable channel |
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `enabled` | boolean | 是否启用通道 |
 | `token` | string | Bot Token |
-| `allowFrom` | string[] | Whitelist users (username or ID) |
-| `apiRoot` | string | Custom Telegram API endpoint, default `https://api.telegram.org` |
-| `debug` | boolean | Enable debug logs |
+| `allowFrom` | string[] | 白名单用户 (用户名或 ID) |
+| `apiRoot` | string | 自定义 Telegram API 地址，默认 `https://api.telegram.org` |
+| `debug` | boolean | 是否启用调试日志 |
 
-### Usage Limits
+### 使用限制
 
-- **Groups and private chats only**: Channels not supported
-- **Polling mode**: Uses long polling, ~1-2 second delay
-- **Media handling**: Images and other media shown as `[media]`
+- **仅支持群组和私聊**：不支持频道
+- **轮询模式**：当前使用长轮询，延迟约 1-2 秒
+- **媒体处理**：图片等媒体会显示为 `[media]`
 
-### Startup Test
+### 启动测试
 
 ```bash
 npm run dev -- gateway --port 18790
 ```
 
-Then chat with the bot in Telegram.
+然后在 Telegram 中与机器人对话。
 
-### FAQ
+### 常见问题
 
-**Q: Not receiving messages?**
-- Check if Token is correct
-- Confirm `enabled` is set to `true`
-- Check network connection
+**Q: 收不到消息？**
+- 检查 Token 是否正确
+- 确认 `enabled` 设为 `true`
+- 检查网络连接
 
-**Q: How to add admins?**
-Modify `allowFrom` array:
+**Q: 如何添加管理员？**
+修改 `allowFrom` 数组：
 
 ```json
 {
@@ -74,11 +74,11 @@ Modify `allowFrom` array:
 }
 ```
 
-### Reverse Proxy Configuration
+### 反向代理配置
 
-In some network environments, you may need a reverse proxy to access Telegram API.
+在某些网络环境下，可能需要使用反向代理访问 Telegram API。
 
-**1. Configure reverse proxy**
+**1. 配置反向代理**
 
 ```json
 {
@@ -93,15 +93,15 @@ In some network environments, you may need a reverse proxy to access Telegram AP
 }
 ```
 
-**2. Verify connection**
+**2. 验证连接**
 
-Connection is automatically verified on startup with `getMe`:
+启动时会自动调用 `getMe` 验证连接：
 
 ```
 [INFO] Telegram API connection verified: {"username":"your_bot","apiRoot":"https://your-proxy-domain.com"}
 ```
 
-**Manual test** (code):
+**手动测试连接** (代码方式):
 
 ```typescript
 const result = await channel.testConnection();
@@ -114,9 +114,9 @@ if (result.success) {
 
 ---
 
-## WhatsApp Channel
+## WhatsApp 通道
 
-### Configuration
+### 配置
 
 ```json
 {
@@ -130,33 +130,33 @@ if (result.success) {
 }
 ```
 
-### Configuration Fields
+### 配置字段
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `enabled` | boolean | Enable channel |
-| `bridge_url` | string | WA Bridge WebSocket URL |
-| `allowFrom` | string[] | Whitelist users |
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `enabled` | boolean | 是否启用 |
+| `bridge_url` | string | WA Bridge WebSocket 地址 |
+| `allowFrom` | string[] | 白名单用户 |
 
-### Current Status
+### 当前状态
 
-⚠️ **WhatsApp channel is currently a placeholder**, requires external WA Bridge.
+⚠️ **WhatsApp 通道当前为占位实现**，需要配合外部 WA Bridge 使用。
 
-Options:
+可选方案：
 - [whatsapp-web.js](https://github.com/pedroslopez/whatsapp-web.js)
 - [Chat-API](https://github.com/chat-api)
 - [WA Bridge](https://github.com/pереводчик/wa-bridge)
 
-### Full Setup Example
+### 完整设置示例
 
 ```bash
-# 1. Install wa-bridge (example)
+# 1. 安装 wa-bridge (示例)
 git clone https://github.com/example/wa-bridge.git
 cd wa-bridge
 npm install
 npm start
 
-# 2. Configure xopcbot
+# 2. 配置 xopcbot
 {
   "channels": {
     "whatsapp": {
@@ -166,15 +166,15 @@ npm start
   }
 }
 
-# 3. Start gateway
+# 3. 启动网关
 npm run dev -- gateway --port 18790
 ```
 
 ---
 
-## Message Format
+## 消息格式
 
-### Inbound Message
+### 入站消息
 
 ```typescript
 {
@@ -187,7 +187,7 @@ npm run dev -- gateway --port 18790
 }
 ```
 
-### Outbound Message
+### 出站消息
 
 ```typescript
 {
@@ -199,16 +199,16 @@ npm run dev -- gateway --port 18790
 
 ---
 
-## Sending Messages
+## 发送消息
 
-### Via CLI
+### 通过 CLI
 
 ```bash
-# Send message to Telegram
+# 发送消息到 Telegram
 npm run dev -- agent -m "Hello from CLI"
 ```
 
-### Via Gateway API
+### 通过 Gateway API
 
 ```bash
 curl -X POST http://localhost:18790/api/message \
@@ -220,20 +220,20 @@ curl -X POST http://localhost:18790/api/message \
   }'
 ```
 
-### Via Plugin
+### 通过 Plugin
 
 ```typescript
 api.registerHook('message_sending', async (event, ctx) => {
-  // Intercept or modify message
+  // 拦截或修改消息
   return { content: event.content };
 });
 ```
 
 ---
 
-## Multi-Channel Usage
+## 多通道同时使用
 
-Can enable Telegram and WhatsApp simultaneously:
+可以同时启用 Telegram 和 WhatsApp：
 
 ```json
 {
@@ -253,12 +253,13 @@ Can enable Telegram and WhatsApp simultaneously:
   }
 }
 ```
+```
 
-Bot listens to messages from both channels.
+机器人会同时监听两个通道的消息。
 
-## Best Practices
+## 最佳实践
 
-1. **Set whitelist**: Production environments should set `allow_from` to restrict users
-2. **Enable logging**: View channel status via `npm run dev`
-3. **Error handling**: Channel connection failures auto-retry
-4. **Resource cleanup**: Close connections properly on service stop
+1. **设置白名单**：生产环境建议设置 `allow_from` 限制用户
+2. **启用日志**：通过 `npm run dev` 查看通道状态
+3. **错误处理**：通道连接失败时会自动重连
+4. **资源清理**：停止服务时正确关闭连接

@@ -2,7 +2,6 @@ import { html, LitElement } from 'lit';
 import { customElement, property, state, query } from 'lit/decorators.js';
 import './components/MessageEditor';
 import './components/MessageList';
-import './components/Messages';
 import './components/StreamingMessageContainer';
 import { t, initI18n } from './utils/i18n';
 import type { Attachment } from './utils/attachment-utils';

@@ -35,6 +35,7 @@ export class MessageEditor extends LitElement {
   @state() private _isDragging = false;
   @state() private _processingFiles = false;
   @state() private _showAttachMenu = false;
+  @state() private _isSending = false;
 
   private textareaRef = createRef<HTMLTextAreaElement>();
   private fileInputRef = createRef<HTMLInputElement>();
@@ -341,7 +342,11 @@ export class MessageEditor extends LitElement {
   }
 
   private _send(): void {
+    // Prevent double-sending or sending while streaming
+    if (this._isSending || this.isStreaming) return;
     if (!this.value.trim() && this.attachments.length === 0) return;
+    
+    this._isSending = true;
     const attachments = [...this.attachments];
     this.onSend?.(this.value, attachments);
     this.value = '';
@@ -350,6 +355,10 @@ export class MessageEditor extends LitElement {
     // Reset textarea height
     requestAnimationFrame(() => {
       this._adjustTextareaHeight();
+      // Delay reset of sending flag to prevent rapid clicks
+      setTimeout(() => {
+        this._isSending = false;
+      }, 500);
     });
   }
 

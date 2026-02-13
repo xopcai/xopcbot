@@ -58,6 +58,7 @@ export class XopcbotGatewayChat extends LitElement {
   @state() private _messages: Message[] = [];
   @state() private _isStreaming = false;
   @state() private _streamingContent = '';
+  @state() private _isSending = false;
 
   private _ws?: WebSocket;
   private _pendingRequests: Map<string, {
@@ -221,7 +222,11 @@ export class XopcbotGatewayChat extends LitElement {
   }
 
   async sendMessage(content: string, attachments?: Array<{ type: string; mimeType?: string; data?: string; name?: string; size?: number }>): Promise<void> {
+    // Prevent double-sending
+    if (this._isSending || this._isStreaming) return;
     if (!content.trim() && !attachments?.length) return;
+
+    this._isSending = true;
 
     // Add user message to UI
     this._messages = [
@@ -244,6 +249,8 @@ export class XopcbotGatewayChat extends LitElement {
     } catch (error) {
       this._error = error instanceof Error ? error.message : 'Failed to send message';
       this.requestUpdate();
+    } finally {
+      this._isSending = false;
     }
   }
 

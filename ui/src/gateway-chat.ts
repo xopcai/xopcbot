@@ -58,7 +58,7 @@ export class XopcbotGatewayChat extends LitElement {
   @state() private _messages: Message[] = [];
   @state() private _isStreaming = false;
   @state() private _streamingContent = '';
-  @state() private _isSending = false;
+  @state() private _streamingMessage: Message | null = null;
 
   private _ws?: WebSocket;
   private _pendingRequests: Map<string, {
@@ -174,29 +174,32 @@ export class XopcbotGatewayChat extends LitElement {
   }
 
   private _updateStreamingMessage(content: string): void {
-    const lastMsg = this._messages[this._messages.length - 1];
-    if (lastMsg?.role === 'assistant') {
-      const textBlock = lastMsg.content.find(b => b.type === 'text');
+    if (this._streamingMessage) {
+      // Update existing streaming message
+      const textBlock = this._streamingMessage.content.find(b => b.type === 'text');
       if (textBlock) {
         textBlock.text = (textBlock.text || '') + content;
       } else {
-        lastMsg.content.push({ type: 'text', text: content });
+        this._streamingMessage.content.push({ type: 'text', text: content });
       }
     } else {
-      this._messages = [
-        ...this._messages,
-        {
-          role: 'assistant',
-          content: [{ type: 'text', text: content }],
-          timestamp: Date.now(),
-        },
-      ];
+      // Create new streaming message
+      this._streamingMessage = {
+        role: 'assistant',
+        content: [{ type: 'text', text: content }],
+        timestamp: Date.now(),
+      };
     }
     this._isStreaming = true;
     this._streamingContent = content;
   }
 
   private _finalizeMessage(): void {
+    // Add completed streaming message to main messages
+    if (this._streamingMessage) {
+      this._messages = [...this._messages, this._streamingMessage];
+      this._streamingMessage = null;
+    }
     this._isStreaming = false;
     this._streamingContent = '';
   }
@@ -321,7 +324,7 @@ export class XopcbotGatewayChat extends LitElement {
     return html`
       <div class="flex flex-col gap-4">
         ${this._messages.map(msg => this._renderMessage(msg))}
-        ${this._isStreaming ? this._renderStreamingMessage() : ''}
+        ${this._isStreaming && this._streamingMessage ? this._renderStreamingMessage() : ''}
       </div>
     `;
   }
@@ -356,8 +359,7 @@ export class XopcbotGatewayChat extends LitElement {
   }
 
   private _renderStreamingMessage(): unknown {
-    const lastMsg = this._messages[this._messages.length - 1];
-    const content = lastMsg?.content || [];
+    const content = this._streamingMessage?.content || [];
     
     return html`
       <div class="flex gap-3 message-item">

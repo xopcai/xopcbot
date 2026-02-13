@@ -341,6 +341,7 @@ export class XopcbotGatewayChat extends LitElement {
     }
     this._isStreaming = true;
     this._streamingContent = content;
+    this.requestUpdate();
   }
 
   private _finalizeMessage(): void {
@@ -351,6 +352,7 @@ export class XopcbotGatewayChat extends LitElement {
     }
     this._isStreaming = false;
     this._streamingContent = '';
+    this.requestUpdate();
   }
 
   private _sendRaw(request: GatewayRequest): void {
@@ -390,6 +392,7 @@ export class XopcbotGatewayChat extends LitElement {
         timestamp: Date.now(),
       },
     ];
+    this.requestUpdate();
 
     // Send to gateway
     try {

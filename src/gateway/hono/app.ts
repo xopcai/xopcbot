@@ -47,17 +47,25 @@ export interface HonoAppConfig {
   token?: string;
 }
 
+// CORS configuration - configurable allowed origins
+const ALLOWED_ORIGINS = process.env.CORS_ORIGINS?.split(',').map(o => o.trim()) || 
+  (process.env.NODE_ENV === 'production' ? [] : ['*']);
+
+const CORS_OPTIONS = {
+  origin: ALLOWED_ORIGINS.length > 0 ? ALLOWED_ORIGINS : '*',
+  allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Session-Id', 'Last-Event-ID'],
+  credentials: true,
+  maxAge: 86400,
+};
+
 export function createHonoApp(config: HonoAppConfig): Hono {
   const { service, token } = config;
   const app = new Hono();
 
   // Global middleware
   app.use(logger());
-  app.use(cors({
-    origin: '*',
-    allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Session-Id', 'Last-Event-ID'],
-  }));
+  app.use(cors(CORS_OPTIONS));
 
   // Health endpoint (no auth required)
   app.get('/health', (c) => {
@@ -102,7 +110,10 @@ export function createHonoApp(config: HonoAppConfig): Hono {
 
   // ========== Core SSE API ==========
 
-  const sseConfig = { service };
+  const sseConfig = { 
+    service,
+    maxSseConnections: service.currentConfig.gateway.maxSseConnections,
+  };
 
   // POST /api/agent — Agent message (SSE stream or JSON fallback)
   authenticated.post('/api/agent', createAgentSSEHandler(sseConfig));

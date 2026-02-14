@@ -47,21 +47,22 @@ export interface HonoAppConfig {
   token?: string;
 }
 
-// CORS configuration - configurable allowed origins
-const ALLOWED_ORIGINS = process.env.CORS_ORIGINS?.split(',').map(o => o.trim()) || 
-  (process.env.NODE_ENV === 'production' ? [] : ['*']);
-
-const CORS_OPTIONS = {
-  origin: ALLOWED_ORIGINS.length > 0 ? ALLOWED_ORIGINS : '*',
-  allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Session-Id', 'Last-Event-ID'],
-  credentials: true,
-  maxAge: 86400,
-};
-
 export function createHonoApp(config: HonoAppConfig): Hono {
   const { service, token } = config;
   const app = new Hono();
+
+  // CORS configuration from config
+  const corsOrigins = service.currentConfig.gateway.corsOrigins || ['*'];
+  const isProduction = process.env.NODE_ENV === 'production';
+  const effectiveOrigins = isProduction && corsOrigins.length > 0 ? corsOrigins : ['*'];
+
+  const CORS_OPTIONS = {
+    origin: effectiveOrigins,
+    allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Session-Id', 'Last-Event-ID'],
+    credentials: true,
+    maxAge: 86400,
+  };
 
   // Global middleware
   app.use(logger());

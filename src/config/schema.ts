@@ -131,6 +131,7 @@ export const GatewayConfigSchema = z.object({
   port: z.number().default(18790),
   heartbeat: HeartbeatConfigSchema.default({}),
   maxSseConnections: z.number().default(100),
+  corsOrigins: z.array(z.string()).default(['*']),
 });
 
 export const CronConfigSchema = z.object({

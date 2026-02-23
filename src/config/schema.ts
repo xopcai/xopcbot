@@ -258,11 +258,6 @@ export type ModelSelection = z.infer<typeof ModelSelectionSchema>;
 export type TelegramConfig = z.infer<typeof TelegramConfigSchema>;
 export type WhatsAppConfig = z.infer<typeof WhatsAppConfigSchema>;
 export type GatewayAuthConfig = z.infer<typeof GatewayAuthSchema>;
-export type ModelDef = z.infer<typeof ModelDefSchema>;
-export type ModelAlias = z.infer<typeof ModelAliasSchema>;
-export type ModelSelection = z.infer<typeof ModelSelectionSchema>;
-export type TelegramConfig = z.infer<typeof TelegramConfigSchema>;
-export type WhatsAppConfig = z.infer<typeof WhatsAppConfigSchema>;
 
 // ============================================
 // Backward Compatibility Exports

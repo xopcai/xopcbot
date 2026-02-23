@@ -1,13 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   ConfigSchema,
-  AgentDefaultsSchema,
-  TelegramConfigSchema,
   ModelsConfigSchema,
-  GatewayConfigSchema,
-  CronConfigSchema,
-  ToolsConfigSchema,
-  WhatsAppConfigSchema,
   ModelDefSchema,
   getApiKey,
   getApiBase,

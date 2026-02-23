@@ -15,11 +15,11 @@ import {
 	type Model,
 	type KnownProvider,
 } from '@mariozechner/pi-ai';
-import type { Config, ModelDef, ProviderConfig } from '../config/schema.js';
+import type { Config } from '../config/schema.js';
 import { resolveEnvVars } from '../config/schema.js';
 import { resolveModelRef } from './model-resolver.js';
 import { createProviderConfig } from './config.js';
-import { listProfilesForProvider, getProfile } from '../auth/profiles/profiles.js';
+import { listProfilesForProvider } from '../auth/profiles/profiles.js';
 import { resolveApiKeyForProfile, getOAuthRefresh } from '../auth/profiles/index.js';
 
 const providerConfig = createProviderConfig();
@@ -121,7 +121,7 @@ export class ModelRegistry {
 			if (apiKey?.startsWith('${') && apiKey?.endsWith('}')) {
 				try {
 					apiKey = resolveEnvVars(apiKey);
-				} catch (err) {
+				} catch {
 					const varName = apiKey.slice(2, -1);
 					console.warn(
 						`[ModelRegistry] ${providerName}: Environment variable ${varName} is not set. ` +
@@ -392,7 +392,7 @@ export function getAllProviderInfo(): ProviderInfo[] {
 				envKey: envKeys[provider],
 				models: models.slice(0, 5).map(m => ({ id: m.id, name: m.name || m.id })),
 			});
-		} catch (error) {
+		} catch {
 			// Skip providers that fail to load
 		}
 	}

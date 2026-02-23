@@ -291,8 +291,7 @@ export function getApiBase(config: Config, provider: string): string | null {
  * Check if provider is OpenAI-compatible.
  * @deprecated Check models.providers[provider].api === 'openai-completions'
  */
-export function isOpenAICompatible(provider: string): boolean {
-  const openaiCompatibleApis = ['openai-completions', 'openai-responses'];
+export function isOpenAICompatible(_provider: string): boolean {
   // This is a simplified check - in reality you'd need config context
   return true; // Default assumption for backward compat
 }
@@ -301,7 +300,7 @@ export function isOpenAICompatible(provider: string): boolean {
  * Check if provider is Anthropic-compatible.
  * @deprecated Check models.providers[provider].api === 'anthropic-messages'
  */
-export function isAnthropicCompatible(provider: string): boolean {
+export function isAnthropicCompatible(): boolean {
   return false; // Simplified
 }
 

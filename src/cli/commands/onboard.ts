@@ -7,7 +7,7 @@ import { register, formatExamples } from '../registry.js';
 import { loadAllTemplates } from '../templates.js';
 import type { CLIContext } from '../registry.js';
 import { AuthStorage, anthropicOAuthProvider, qwenPortalOAuthProvider, minimaxOAuthProvider, kimiOAuthProvider, githubCopilotOAuthProvider, googleGeminiCliOAuthProvider, googleAntigravityOAuthProvider, openaiCodexOAuthProvider, type OAuthLoginCallbacks } from '../../auth/index.js';
-import { upsertAuthProfile, listProfilesForProvider } from '../../auth/profiles/index.js';
+import { upsertAuthProfile, listProfilesForProvider, registerOAuthRefresh } from '../../auth/profiles/index.js';
 import { ModelRegistry } from '../../providers/index.js';
 import { colors } from '../utils/colors.js';
 import { homedir } from 'os';
@@ -383,6 +383,9 @@ async function doOAuthLogin(provider: string): Promise<boolean> {
     try {
       await authStorage.login('anthropic', callbacks);
       
+      // Register OAuth refresh function for ModelRegistry
+      registerOAuthRefresh('anthropic', (creds) => anthropicOAuthProvider.refreshToken(creds));
+      
       // Also add to AuthProfiles
       const creds = authStorage.getOAuthCredentials('anthropic');
       if (creds) {
@@ -423,6 +426,8 @@ async function doOAuthLogin(provider: string): Promise<boolean> {
     
     try {
       const creds = await qwenPortalOAuthProvider.login(callbacks);
+      // Register OAuth refresh function
+      registerOAuthRefresh('qwen', (creds) => qwenPortalOAuthProvider.refreshToken(creds));
       upsertAuthProfile({
         profileId: 'qwen:default',
         credential: {
@@ -458,6 +463,8 @@ async function doOAuthLogin(provider: string): Promise<boolean> {
     
     try {
       const creds = await minimaxOAuthProvider.login(callbacks);
+      // Register OAuth refresh function
+      registerOAuthRefresh('minimax', (creds) => minimaxOAuthProvider.refreshToken(creds));
       upsertAuthProfile({
         profileId: 'minimax:default',
         credential: {
@@ -493,6 +500,8 @@ async function doOAuthLogin(provider: string): Promise<boolean> {
     
     try {
       const creds = await kimiOAuthProvider.login(callbacks);
+      // Register OAuth refresh function
+      registerOAuthRefresh('kimi', (creds) => kimiOAuthProvider.refreshToken(creds));
       upsertAuthProfile({
         profileId: 'kimi:default',
         credential: {
@@ -528,6 +537,8 @@ async function doOAuthLogin(provider: string): Promise<boolean> {
     
     try {
       const creds = await githubCopilotOAuthProvider.login(callbacks);
+      // Register OAuth refresh function
+      registerOAuthRefresh('github-copilot', (creds) => githubCopilotOAuthProvider.refreshToken(creds));
       upsertAuthProfile({
         profileId: 'github-copilot:default',
         credential: {
@@ -563,6 +574,8 @@ async function doOAuthLogin(provider: string): Promise<boolean> {
     
     try {
       const creds = await googleGeminiCliOAuthProvider.login(callbacks);
+      // Register OAuth refresh function
+      registerOAuthRefresh('google-gemini-cli', (creds) => googleGeminiCliOAuthProvider.refreshToken(creds));
       upsertAuthProfile({
         profileId: 'google-gemini-cli:default',
         credential: {

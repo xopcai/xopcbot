@@ -20,7 +20,7 @@ import { resolveEnvVars } from '../config/schema.js';
 import { resolveModelRef } from './model-resolver.js';
 import { createProviderConfig } from './config.js';
 import { listProfilesForProvider, getProfile } from '../auth/profiles/profiles.js';
-import { resolveApiKeyForProfile } from '../auth/profiles/oauth.js';
+import { resolveApiKeyForProfile, getOAuthRefresh } from '../auth/profiles/index.js';
 
 const providerConfig = createProviderConfig();
 const OLLAMA_API_BASE = providerConfig.ollamaBaseUrl;
@@ -97,9 +97,11 @@ export class ModelRegistry {
 				const profiles = listProfilesForProvider(providerName);
 				if (profiles.length > 0 && profiles[0]?.hasKey) {
 					try {
-						const result = await resolveApiKeyForProfile(profiles[0].profileId);
+						// Get refresh function if available for OAuth
+						const refreshFn = getOAuthRefresh(providerName);
+						const result = await resolveApiKeyForProfile(profiles[0].profileId, refreshFn);
 						if (result) {
-							apiKey = result.apiKey;
+							apiKey = result;
 							console.log(`[ModelRegistry] ${providerName}: Using OAuth credentials from auth profile`);
 						}
 					} catch (err) {

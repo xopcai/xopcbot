@@ -409,13 +409,17 @@ export const PROVIDER_OPTIONS: ProviderOption[] = [
 /**
  * Resolve environment variables in config values.
  * Supports ${VAR_NAME} syntax.
+ * Example: "${KIMI_API_KEY}" -> process.env.KIMI_API_KEY
  */
 export function resolveEnvVars(value: string): string {
   const match = /^\$\{([A-Z_][A-Z0-9_]*)\}$/.exec(value);
   if (match) {
     const envValue = process.env[match[1]];
     if (envValue) return envValue;
-    throw new Error(`Environment variable ${match[1]} is not set`);
+    throw new Error(
+      `Environment variable ${match[1]} is not set. ` +
+      `Please set it with: export ${match[1]}=your_key_here`
+    );
   }
   return value;
 }

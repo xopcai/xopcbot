@@ -91,7 +91,12 @@ export class ModelRegistry {
 				try {
 					apiKey = resolveEnvVars(apiKey);
 				} catch (err) {
-					console.warn(`[ModelRegistry] Failed to resolve env var for ${providerName}: ${apiKey}`);
+					const varName = apiKey.slice(2, -1);
+					console.warn(
+						`[ModelRegistry] ${providerName}: Environment variable ${varName} is not set. ` +
+						`Provider will be unavailable until you set it with: export ${varName}=your_api_key`
+					);
+					continue; // Skip this provider if API key is not resolvable
 				}
 			}
 
@@ -131,14 +136,28 @@ export class ModelRegistry {
 
 	private async discoverOllamaModels(): Promise<void> {
 		try {
+			const controller = new AbortController();
+			const timeoutId = setTimeout(() => controller.abort(), OLLAMA_TIMEOUT_MS);
+			
 			const response = await fetch(OLLAMA_TAGS_URL, { 
-				signal: AbortSignal.timeout(OLLAMA_TIMEOUT_MS) 
+				signal: controller.signal 
 			});
-			if (!response.ok) return;
+			clearTimeout(timeoutId);
+			
+			if (!response.ok) {
+				if (response.status === 404) {
+					console.log('[ModelRegistry] Ollama not found at ' + OLLAMA_API_BASE);
+				}
+				return;
+			}
 
 			const data = (await response.json()) as OllamaTagsResponse;
-			if (!data.models?.length) return;
+			if (!data.models?.length) {
+				console.log('[ModelRegistry] Ollama running but no models found');
+				return;
+			}
 
+			let addedCount = 0;
 			for (const model of data.models) {
 				const exists = this.models.some((m) => m.provider === 'ollama' && m.id === model.name);
 				if (!exists) {
@@ -148,16 +167,25 @@ export class ModelRegistry {
 						api: 'openai-completions' as Api,
 						provider: 'ollama',
 						baseUrl: `${OLLAMA_API_BASE}/v1`,
-						reasoning: model.name.toLowerCase().includes('r1'),
+						reasoning: model.name.toLowerCase().includes('r1') || model.name.toLowerCase().includes('reason'),
 						input: ['text'],
 						cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 						contextWindow: 131072,
 						maxTokens: 4096,
 					} as Model<Api>);
+					addedCount++;
 				}
 			}
-		} catch {
-			// Ignore Ollama discovery errors
+			
+			if (addedCount > 0) {
+				console.log(`[ModelRegistry] Discovered ${addedCount} Ollama model(s)`);
+			}
+		} catch (err) {
+			if (err instanceof Error && err.name === 'AbortError') {
+				console.log('[ModelRegistry] Ollama discovery timed out');
+			} else {
+				console.log('[ModelRegistry] Ollama not available (expected if not running)');
+			}
 		}
 	}
 

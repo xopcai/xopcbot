@@ -226,15 +226,15 @@ describe('Environment Variable Resolution', () => {
 
 describe('Model Reference Parsing', () => {
   it('should parse provider/model format', () => {
-    const ref = parseModelRef('kimi/kimi-k2.5');
+    const ref = parseModelId('kimi/kimi-k2.5');
     expect(ref.provider).toBe('kimi');
     expect(ref.model).toBe('kimi-k2.5');
   });
 
   it('should detect provider from model name', () => {
-    expect(parseModelRef('gpt-4o').provider).toBe('openai');
-    expect(parseModelRef('claude-3').provider).toBe('anthropic');
-    expect(parseModelRef('kimi-k2.5').provider).toBe('kimi');
+    expect(parseModelId('gpt-4o').provider).toBe('openai');
+    expect(parseModelId('claude-3').provider).toBe('anthropic');
+    expect(parseModelId('kimi-k2.5').provider).toBe('kimi');
   });
 });
 

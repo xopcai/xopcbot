@@ -36,6 +36,7 @@ describe('ConfigHotReloader', () => {
       defaults: {
         workspace: '~/.xopcbot/workspace',
         model: 'anthropic/claude-sonnet-4-5',
+        models: {},
         maxTokens: 8192,
         temperature: 0.7,
         maxToolIterations: 20,
@@ -56,13 +57,12 @@ describe('ConfigHotReloader', () => {
         allowFrom: [],
       },
     },
-    providers: {
-      openai: { apiKey: '' },
-      anthropic: { apiKey: '' },
-      ollama: {
-        enabled: true,
-        baseUrl: 'http://127.0.0.1:11434/v1',
-        autoDiscovery: true,
+    models: {
+      mode: 'merge',
+      providers: {
+        openai: { apiKey: '', baseUrl: 'https://api.openai.com/v1', api: 'openai-completions', models: [] },
+        anthropic: { apiKey: '', baseUrl: 'https://api.anthropic.com', api: 'anthropic-messages', models: [] },
+        ollama: { baseUrl: 'http://127.0.0.1:11434/v1', api: 'openai-completions', models: [] },
       },
     },
     gateway: {
@@ -264,9 +264,12 @@ describe('ConfigHotReloader', () => {
     it('should detect and apply provider changes', async () => {
       const newConfig: Config = {
         ...mockInitialConfig,
-        providers: {
-          ...mockInitialConfig.providers,
-          openai: { apiKey: 'new-key' },
+        models: {
+          ...mockInitialConfig.models,
+          providers: {
+            ...mockInitialConfig.models.providers,
+            openai: { apiKey: 'new-key', baseUrl: 'https://api.openai.com/v1', api: 'openai-completions', models: [] },
+          },
         },
       };
       vi.mocked(loadConfig).mockReturnValue(newConfig);
@@ -377,9 +380,12 @@ describe('ConfigHotReloader', () => {
     it('should update current config after successful reload', async () => {
       const newConfig: Config = {
         ...mockInitialConfig,
-        providers: {
-          ...mockInitialConfig.providers,
-          openai: { apiKey: 'new-key' },
+        models: {
+          ...mockInitialConfig.models,
+          providers: {
+            ...mockInitialConfig.models.providers,
+            openai: { apiKey: 'new-key', baseUrl: 'https://api.openai.com/v1', api: 'openai-completions', models: [] },
+          },
         },
       };
       vi.mocked(loadConfig).mockReturnValue(newConfig);
@@ -402,9 +408,12 @@ describe('ConfigHotReloader', () => {
       
       const newConfig: Config = {
         ...mockInitialConfig,
-        providers: {
-          ...mockInitialConfig.providers,
-          openai: { apiKey: 'new-key' },
+        models: {
+          ...mockInitialConfig.models,
+          providers: {
+            ...mockInitialConfig.models.providers,
+            openai: { apiKey: 'new-key', baseUrl: 'https://api.openai.com/v1', api: 'openai-completions', models: [] },
+          },
         },
       };
       vi.mocked(loadConfig).mockReturnValue(newConfig);
@@ -434,9 +443,12 @@ describe('ConfigHotReloader', () => {
     it('should manually trigger reload', async () => {
       const newConfig: Config = {
         ...mockInitialConfig,
-        providers: {
-          ...mockInitialConfig.providers,
-          openai: { apiKey: 'manual-key' },
+        models: {
+          ...mockInitialConfig.models,
+          providers: {
+            ...mockInitialConfig.models.providers,
+            openai: { apiKey: 'manual-key', baseUrl: 'https://api.openai.com/v1', api: 'openai-completions', models: [] },
+          },
         },
       };
       vi.mocked(loadConfig).mockReturnValue(newConfig);

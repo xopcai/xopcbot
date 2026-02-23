@@ -66,10 +66,12 @@ export function resolveModelRef(ref: string, config: Config): ResolvedModel {
   const aliased = aliasMap.get(normalizedRef);
   if (aliased) {
     log.debug({ ref, resolved: aliased }, 'Resolved model alias');
-    return parseModelRef(aliased);
+    const parsed = parseModelRef(aliased);
+    return { ...parsed, fullId: aliased };
   }
 
-  return parseModelRef(ref);
+  const parsed = parseModelRef(ref);
+  return { ...parsed, fullId: `${parsed.provider}/${parsed.model}` };
 }
 
 /**

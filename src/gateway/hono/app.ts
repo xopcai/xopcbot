@@ -205,21 +205,9 @@ export function createHonoApp(config: HonoAppConfig): Hono {
           allowFrom: config.channels?.whatsapp?.allowFrom || [],
         },
       },
-      providers: {
-        openai: { apiKey: config.providers?.openai?.apiKey || '', baseUrl: config.providers?.openai?.baseUrl || '' },
-        anthropic: { apiKey: config.providers?.anthropic?.apiKey || '' },
-        google: { apiKey: config.providers?.google?.apiKey || '' },
-        qwen: { apiKey: config.providers?.qwen?.apiKey || '', baseUrl: config.providers?.qwen?.baseUrl || '' },
-        kimi: { apiKey: config.providers?.kimi?.apiKey || '', baseUrl: config.providers?.kimi?.baseUrl || '' },
-        minimax: { apiKey: config.providers?.minimax?.apiKey || '', baseUrl: config.providers?.minimax?.baseUrl || '' },
-        deepseek: { apiKey: config.providers?.deepseek?.apiKey || '', baseUrl: config.providers?.deepseek?.baseUrl || '' },
-        groq: { apiKey: config.providers?.groq?.apiKey || '', baseUrl: config.providers?.groq?.baseUrl || '' },
-        openrouter: { apiKey: config.providers?.openrouter?.apiKey || '', baseUrl: config.providers?.openrouter?.baseUrl || '' },
-        ollama: { 
-          enabled: config.providers?.ollama?.enabled ?? true, 
-          baseUrl: config.providers?.ollama?.baseUrl || 'http://127.0.0.1:11434/v1',
-          autoDiscovery: config.providers?.ollama?.autoDiscovery ?? true,
-        },
+      models: {
+        mode: config.models?.mode || 'merge',
+        providers: config.models?.providers || {},
       },
       gateway: {
         host: config.gateway?.host,
@@ -243,11 +231,14 @@ export function createHonoApp(config: HonoAppConfig): Hono {
     
     // Update agent defaults
     if (body.agents?.defaults) {
-      if (!config.agents) config.agents = { defaults: { workspace: '~/.xopcbot/workspace', model: 'anthropic/claude-sonnet-4-5', maxTokens: 8192, temperature: 0.7, maxToolIterations: 20 } };
+      if (!config.agents) config.agents = { defaults: { workspace: '~/.xopcbot/workspace', model: 'anthropic/claude-sonnet-4-5', models: {}, maxTokens: 8192, temperature: 0.7, maxToolIterations: 20 } };
       if (!config.agents.defaults) config.agents.defaults = {} as any;
       
       if (body.agents.defaults.model !== undefined) {
         config.agents.defaults.model = body.agents.defaults.model;
+      }
+      if (body.agents.defaults.models !== undefined) {
+        config.agents.defaults.models = body.agents.defaults.models;
       }
       if (body.agents.defaults.maxTokens !== undefined) {
         config.agents.defaults.maxTokens = body.agents.defaults.maxTokens;
@@ -301,38 +292,32 @@ export function createHonoApp(config: HonoAppConfig): Hono {
     
     // Update gateway
     if (body.gateway?.heartbeat?.enabled !== undefined) {
-      if (!config.gateway) config.gateway = { host: '0.0.0.0', port: 18790, heartbeat: { enabled: true, intervalMs: 60000 }, maxSseConnections: 100, corsOrigins: ['*'] };
+      if (!config.gateway) config.gateway = { host: '0.0.0.0', port: 18790, auth: { mode: 'token' }, heartbeat: { enabled: true, intervalMs: 60000 }, maxSseConnections: 100, corsOrigins: ['*'] };
       if (!config.gateway.heartbeat) config.gateway.heartbeat = { enabled: true, intervalMs: 60000 };
       config.gateway.heartbeat.enabled = body.gateway.heartbeat.enabled;
     }
     if (body.gateway?.heartbeat?.intervalMs !== undefined) {
-      if (!config.gateway) config.gateway = { host: '0.0.0.0', port: 18790, heartbeat: { enabled: true, intervalMs: 60000 }, maxSseConnections: 100, corsOrigins: ['*'] };
+      if (!config.gateway) config.gateway = { host: '0.0.0.0', port: 18790, auth: { mode: 'token' }, heartbeat: { enabled: true, intervalMs: 60000 }, maxSseConnections: 100, corsOrigins: ['*'] };
       if (!config.gateway.heartbeat) config.gateway.heartbeat = { enabled: true, intervalMs: 60000 };
       config.gateway.heartbeat.intervalMs = body.gateway.heartbeat.intervalMs;
     }
     
-    // Update providers
-    if (body.providers) {
-      if (!config.providers) config.providers = {} as any;
+    // Update models (new OpenClaw-style config)
+    if (body.models?.providers) {
+      if (!config.models) config.models = { mode: 'merge', providers: {} };
       
-      const providerKeys = ['openai', 'anthropic', 'google', 'qwen', 'kimi', 'minimax', 'deepseek', 'groq', 'openrouter', 'ollama', 'moonshot', 'xai', 'bedrock'];
-      for (const key of providerKeys) {
-        if (body.providers[key]) {
-          if (!config.providers[key]) config.providers[key] = {} as any;
-          
-          if (body.providers[key].apiKey !== undefined) {
-            config.providers[key].apiKey = body.providers[key].apiKey;
-          }
-          if (body.providers[key].baseUrl !== undefined) {
-            config.providers[key].baseUrl = body.providers[key].baseUrl || undefined;
-          }
-          if (body.providers[key].enabled !== undefined) {
-            config.providers[key].enabled = body.providers[key].enabled;
-          }
-          if (body.providers[key].autoDiscovery !== undefined) {
-            config.providers[key].autoDiscovery = body.providers[key].autoDiscovery;
-          }
+      for (const [providerName, providerConfig] of Object.entries(body.models.providers)) {
+        if (!config.models.providers[providerName]) {
+          config.models.providers[providerName] = {} as any;
         }
+        
+        const cfg = config.models.providers[providerName];
+        const bodyCfg = providerConfig as any;
+        
+        if (bodyCfg.apiKey !== undefined) cfg.apiKey = bodyCfg.apiKey;
+        if (bodyCfg.baseUrl !== undefined) cfg.baseUrl = bodyCfg.baseUrl;
+        if (bodyCfg.api !== undefined) cfg.api = bodyCfg.api;
+        if (bodyCfg.models !== undefined) cfg.models = bodyCfg.models;
       }
     }
     
@@ -401,27 +386,23 @@ export function createHonoApp(config: HonoAppConfig): Hono {
       }
     }
 
-    // Add custom models from config.json provider overrides
-    const providers = config.providers as Record<string, any>;
-    if (providers) {
-      for (const [providerName, providerConfig] of Object.entries(providers)) {
-        // Skip if already in pi-ai
-        if (piAiProviders.includes(providerName)) continue;
+    // Add custom models from config.models.providers
+    const customProviders = config.models?.providers || {};
+    for (const [providerName, providerConfig] of Object.entries(customProviders)) {
+      // Skip if already in pi-ai
+      if (piAiProviders.includes(providerName)) continue;
 
-        // Only include configured providers (have API key)
-        if (!isProviderConfigured(config, providerName)) continue;
+      // Only include configured providers (have API key)
+      if (!providerConfig?.apiKey) continue;
 
-        // Add custom models defined in provider config
-        if (providerConfig?.models && Array.isArray(providerConfig.models)) {
-          for (const modelConfig of providerConfig.models) {
-            const modelId = typeof modelConfig === 'string' ? modelConfig : (modelConfig as any).id;
-            const modelName = typeof modelConfig === 'string' ? modelConfig : (modelConfig as any).name || modelConfig;
-            models.push({
-              id: `${providerName}/${modelId}`,
-              name: modelName,
-              provider: providerName,
-            });
-          }
+      // Add custom models defined in provider config
+      if (providerConfig?.models && Array.isArray(providerConfig.models)) {
+        for (const modelDef of providerConfig.models) {
+          models.push({
+            id: `${providerName}/${modelDef.id}`,
+            name: modelDef.name,
+            provider: providerName,
+          });
         }
       }
     }

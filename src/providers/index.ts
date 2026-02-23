@@ -22,11 +22,7 @@ export type { LLMProvider } from './pi-ai.js';
 // ModelRegistry exports
 export {
 	ModelRegistry,
-	resolveConfigValue,
-	PROVIDER_INFO,
-	registerOAuthRefresh,
-	type ProviderOverride,
-	type ProviderInfo,
+	createModelRegistry,
 } from './registry.js';
 
 // New strict types

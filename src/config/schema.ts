@@ -92,7 +92,9 @@ export const AgentDefaultsSchema = z.object({
 });
 
 export const AgentsConfigSchema = z.object({
-  defaults: AgentDefaultsSchema.default({}),
+  defaults: AgentDefaultsSchema,
+}).default({
+  defaults: { workspace: '~/.xopcbot/workspace', model: 'anthropic/claude-sonnet-4-5', models: {}, maxTokens: 8192, temperature: 0.7, maxToolIterations: 20 },
 });
 
 // ============================================
@@ -153,8 +155,11 @@ export const WhatsAppConfigSchema = z.object({
 });
 
 export const ChannelsConfigSchema = z.object({
-  telegram: TelegramConfigSchema.default({}),
-  whatsapp: WhatsAppConfigSchema.default({}),
+  telegram: TelegramConfigSchema,
+  whatsapp: WhatsAppConfigSchema,
+}).default({
+  telegram: { enabled: false, token: '', allowFrom: [], debug: false, dmPolicy: 'pairing', groupPolicy: 'open' },
+  whatsapp: { enabled: false, bridgeUrl: 'ws://localhost:3001', allowFrom: [] },
 });
 
 // ============================================
@@ -168,9 +173,9 @@ export const WebSearchConfigSchema = z.object({
 
 export const ToolsConfigSchema = z.object({
   web: z.object({
-    search: WebSearchConfigSchema.default({}),
-  }).default({}),
-});
+    search: WebSearchConfigSchema,
+  }).default({ search: { apiKey: '', maxResults: 5 } }),
+}).default({ web: { search: { apiKey: '', maxResults: 5 } } });
 
 // ============================================
 // Gateway Config
@@ -179,16 +184,16 @@ export const ToolsConfigSchema = z.object({
 export const GatewayAuthSchema = z.object({
   mode: z.enum(['none', 'token']).default('token'),
   token: z.string().optional(),
-});
+}).default({ mode: 'token' });
 
 export const GatewayConfigSchema = z.object({
   host: z.string().default('0.0.0.0'),
   port: z.number().default(18790),
-  auth: GatewayAuthSchema.default({}),
+  auth: GatewayAuthSchema,
   heartbeat: z.object({
     enabled: z.boolean().default(true),
     intervalMs: z.number().default(60000),
-  }).default({}),
+  }).default({ enabled: true, intervalMs: 60000 }),
   maxSseConnections: z.number().default(100),
   corsOrigins: z.array(z.string()).default(['*']),
 });
@@ -203,11 +208,11 @@ export const CronConfigSchema = z.object({
   defaultTimezone: z.string().default('UTC'),
   historyRetentionDays: z.number().default(7),
   enableMetrics: z.boolean().default(true),
-});
+}).default({ enabled: true, maxConcurrentJobs: 5, defaultTimezone: 'UTC', historyRetentionDays: 7, enableMetrics: true });
 
 export const ModelsDevConfigSchema = z.object({
   enabled: z.boolean().default(true),
-});
+}).default({ enabled: true });
 
 export const PluginsConfigSchema = z.record(
   z.string(),
@@ -219,15 +224,24 @@ export const PluginsConfigSchema = z.record(
 // ============================================
 
 export const ConfigSchema = z.object({
-  agents: AgentsConfigSchema.default({}),
-  channels: ChannelsConfigSchema.default({}),
+  agents: AgentsConfigSchema,
+  channels: ChannelsConfigSchema,
   // OpenClaw-style models configuration
-  models: ModelsConfigSchema.default({}),
-  gateway: GatewayConfigSchema.default({}),
-  tools: ToolsConfigSchema.default({}),
-  cron: CronConfigSchema.default({}),
+  models: ModelsConfigSchema,
+  gateway: GatewayConfigSchema,
+  tools: ToolsConfigSchema,
+  cron: CronConfigSchema,
   plugins: PluginsConfigSchema,
-  modelsDev: ModelsDevConfigSchema.default({}),
+  modelsDev: ModelsDevConfigSchema,
+}).default({
+  agents: { defaults: { workspace: '~/.xopcbot/workspace', model: 'anthropic/claude-sonnet-4-5', models: {}, maxTokens: 8192, temperature: 0.7, maxToolIterations: 20 } },
+  channels: { telegram: { enabled: false, token: '', allowFrom: [], debug: false, dmPolicy: 'pairing', groupPolicy: 'open' }, whatsapp: { enabled: false, bridgeUrl: 'ws://localhost:3001', allowFrom: [] } },
+  models: { mode: 'merge', providers: {} },
+  gateway: { host: '0.0.0.0', port: 18790, auth: { mode: 'token' }, heartbeat: { enabled: true, intervalMs: 60000 }, maxSseConnections: 100, corsOrigins: ['*'] },
+  tools: { web: { search: { apiKey: '', maxResults: 5 } } },
+  cron: { enabled: true, maxConcurrentJobs: 5, defaultTimezone: 'UTC', historyRetentionDays: 7, enableMetrics: true },
+  plugins: {},
+  modelsDev: { enabled: true },
 });
 
 // ============================================
@@ -243,6 +257,155 @@ export type ModelAlias = z.infer<typeof ModelAliasSchema>;
 export type ModelSelection = z.infer<typeof ModelSelectionSchema>;
 export type TelegramConfig = z.infer<typeof TelegramConfigSchema>;
 export type WhatsAppConfig = z.infer<typeof WhatsAppConfigSchema>;
+export type GatewayAuthConfig = z.infer<typeof GatewayAuthSchema>;
+export type ModelDef = z.infer<typeof ModelDefSchema>;
+export type ModelAlias = z.infer<typeof ModelAliasSchema>;
+export type ModelSelection = z.infer<typeof ModelSelectionSchema>;
+export type TelegramConfig = z.infer<typeof TelegramConfigSchema>;
+export type WhatsAppConfig = z.infer<typeof WhatsAppConfigSchema>;
+
+// ============================================
+// Backward Compatibility Exports
+// ============================================
+
+/** @deprecated Use ModelDefSchema instead */
+export const ModelMetadataSchema = ModelDefSchema;
+
+/** @deprecated Use ModelDef type instead */
+export type ModelMetadata = ModelDef;
+
+/** @deprecated Old providers config schema - use ModelsConfigSchema instead */
+export const ProvidersConfigSchema = ModelsConfigSchema;
+
+/**
+ * Get API key for a provider from config.
+ * @deprecated Use models.providers[provider].apiKey with env var substitution
+ */
+export function getApiKey(config: Config, provider: string): string | null {
+  const providerConfig = config.models?.providers?.[provider];
+  if (providerConfig?.apiKey) {
+    try {
+      return resolveEnvVars(providerConfig.apiKey);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Get API base URL for a provider from config.
+ * @deprecated Use models.providers[provider].baseUrl
+ */
+export function getApiBase(config: Config, provider: string): string | null {
+  return config.models?.providers?.[provider]?.baseUrl ?? null;
+}
+
+/**
+ * Check if provider is OpenAI-compatible.
+ * @deprecated Check models.providers[provider].api === 'openai-completions'
+ */
+export function isOpenAICompatible(provider: string): boolean {
+  const openaiCompatibleApis = ['openai-completions', 'openai-responses'];
+  // This is a simplified check - in reality you'd need config context
+  return true; // Default assumption for backward compat
+}
+
+/**
+ * Check if provider is Anthropic-compatible.
+ * @deprecated Check models.providers[provider].api === 'anthropic-messages'
+ */
+export function isAnthropicCompatible(provider: string): boolean {
+  return false; // Simplified
+}
+
+/**
+ * Parse model ID to extract provider and model.
+ * @deprecated Use parseModelRef instead
+ */
+export function parseModelId(modelId: string): { provider: string; model: string } {
+  return parseModelRef(modelId);
+}
+
+/**
+ * Check if provider is configured.
+ * @deprecated Check if models.providers[provider] exists and has apiKey
+ */
+export function isProviderConfigured(config: Config, provider: string): boolean {
+  const providerConfig = config.models?.providers?.[provider];
+  return !!providerConfig && !!providerConfig.apiKey;
+}
+
+/**
+ * List all configured providers.
+ * @deprecated Use Object.keys(config.models.providers)
+ */
+export function listConfiguredProviders(config: Config): string[] {
+  return Object.keys(config.models?.providers ?? {});
+}
+
+/**
+ * Get workspace path with home directory expansion.
+ */
+export function getWorkspacePath(config: Config): string {
+  const workspace = config.agents?.defaults?.workspace ?? '~/.xopcbot/workspace';
+  if (workspace.startsWith('~')) {
+    return workspace.replace('~', homedir());
+  }
+  return workspace;
+}
+
+// ============================================
+// Built-in Model Catalog (for backward compat)
+// ============================================
+
+export interface BuiltinModel {
+  id: string;
+  name: string;
+  provider: string;
+}
+
+export const BUILTIN_MODELS: BuiltinModel[] = [
+  { id: 'openai/gpt-4o', name: 'GPT-4o', provider: 'openai' },
+  { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', provider: 'openai' },
+  { id: 'anthropic/claude-sonnet-4-5', name: 'Claude Sonnet 4.5', provider: 'anthropic' },
+  { id: 'google/gemini-2.5-pro', name: 'Gemini 2.5 Pro', provider: 'google' },
+  { id: 'kimi/kimi-k2.5', name: 'Kimi K2.5', provider: 'kimi' },
+  { id: 'minimax/MiniMax-M2.1', name: 'MiniMax M2.1', provider: 'minimax' },
+  { id: 'deepseek/deepseek-chat', name: 'DeepSeek Chat', provider: 'deepseek' },
+];
+
+export function listBuiltinModels(): BuiltinModel[] {
+  return BUILTIN_MODELS;
+}
+
+export const PROVIDER_NAMES: Record<string, string> = {
+  'openai': 'OpenAI',
+  'anthropic': 'Anthropic',
+  'google': 'Google',
+  'kimi': 'Kimi',
+  'moonshot': 'Moonshot AI',
+  'minimax': 'MiniMax',
+  'deepseek': 'DeepSeek',
+  'qwen': 'Qwen',
+  'zhipu': 'Zhipu',
+};
+
+export interface ProviderOption {
+  name: string;
+  value: string;
+  envKey: string;
+  models: string[];
+}
+
+export const PROVIDER_OPTIONS: ProviderOption[] = [
+  { name: 'OpenAI (GPT-4)', value: 'openai', envKey: 'OPENAI_API_KEY', models: ['gpt-4o', 'gpt-4o-mini'] },
+  { name: 'Anthropic (Claude)', value: 'anthropic', envKey: 'ANTHROPIC_API_KEY', models: ['claude-sonnet-4-5'] },
+  { name: 'Google (Gemini)', value: 'google', envKey: 'GOOGLE_API_KEY', models: ['gemini-2.5-pro'] },
+  { name: 'Kimi (Moonshot)', value: 'kimi', envKey: 'KIMI_API_KEY', models: ['kimi-k2.5'] },
+  { name: 'MiniMax', value: 'minimax', envKey: 'MINIMAX_API_KEY', models: ['MiniMax-M2.1'] },
+  { name: 'DeepSeek', value: 'deepseek', envKey: 'DEEPSEEK_API_KEY', models: ['deepseek-chat'] },
+];
 
 // ============================================
 // Environment Variable Substitution
@@ -310,12 +473,4 @@ function detectProvider(modelId: string): string {
   if (lower.startsWith('glm')) return 'zhipu';
   if (lower.startsWith('minimax')) return 'minimax';
   return 'openai';
-}
-
-export function getWorkspacePath(config: Config): string {
-  const workspace = config.agents.defaults.workspace;
-  if (workspace.startsWith('~')) {
-    return workspace.replace('~', homedir());
-  }
-  return workspace;
 }

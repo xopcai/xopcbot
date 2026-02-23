@@ -224,7 +224,7 @@ describe('Media Download and Conversion', () => {
     });
 
     it('should handle message without attachments', () => {
-      const message = {
+      const message: import('../../types/index.js').InboundMessage = {
         channel: 'telegram',
         sender_id: '123456789',
         chat_id: '987654321',

@@ -162,7 +162,9 @@ function createConfigCommand(ctx: CLIContext): Command {
         const crypto = await import('crypto');
         const newToken = crypto.randomBytes(24).toString('hex');
 
-        config.gateway = config.gateway || {};
+        if (!config.gateway) {
+          config.gateway = { host: '0.0.0.0', port: 18790, auth: { mode: 'token' }, heartbeat: { enabled: true, intervalMs: 60000 }, maxSseConnections: 100, corsOrigins: ['*'] };
+        }
         config.gateway.auth = {
           mode: 'token',
           token: newToken,

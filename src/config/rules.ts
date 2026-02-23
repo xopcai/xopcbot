@@ -29,7 +29,7 @@ export interface ReloadPlan {
  */
 export const BASE_RELOAD_RULES: ReloadRule[] = [
   // Providers - hot reload
-  { prefix: 'providers', kind: 'hot', description: 'Provider API keys, base URLs' },
+  { prefix: 'models.providers', kind: 'hot', description: 'Provider API keys, base URLs' },
   
   // Agent defaults - hot reload
   { prefix: 'agents.defaults.model', kind: 'hot', description: 'Model configuration' },

@@ -176,7 +176,7 @@ export class ConfigHotReloader {
    * Apply a single hot-reloadable path
    */
   private async applyHotPath(path: string, newConfig: Config): Promise<void> {
-    if (path.startsWith('providers.')) {
+    if (path.startsWith('models.providers.')) {
       if (this.callbacks.onProvidersReload) {
         this.callbacks.onProvidersReload(newConfig);
       }

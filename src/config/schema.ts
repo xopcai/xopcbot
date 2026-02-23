@@ -155,8 +155,8 @@ export const WhatsAppConfigSchema = z.object({
 });
 
 export const ChannelsConfigSchema = z.object({
-  telegram: TelegramConfigSchema,
-  whatsapp: WhatsAppConfigSchema,
+  telegram: TelegramConfigSchema.default({ enabled: false, token: '', allowFrom: [], debug: false, dmPolicy: 'pairing', groupPolicy: 'open' }),
+  whatsapp: WhatsAppConfigSchema.default({ enabled: false, bridgeUrl: 'ws://localhost:3001', allowFrom: [] }),
 }).default({
   telegram: { enabled: false, token: '', allowFrom: [], debug: false, dmPolicy: 'pairing', groupPolicy: 'open' },
   whatsapp: { enabled: false, bridgeUrl: 'ws://localhost:3001', allowFrom: [] },
@@ -224,24 +224,15 @@ export const PluginsConfigSchema = z.record(
 // ============================================
 
 export const ConfigSchema = z.object({
-  agents: AgentsConfigSchema,
-  channels: ChannelsConfigSchema,
+  agents: AgentsConfigSchema.default({ defaults: { workspace: '~/.xopcbot/workspace', model: 'anthropic/claude-sonnet-4-5', models: {}, maxTokens: 8192, temperature: 0.7, maxToolIterations: 20 } }),
+  channels: ChannelsConfigSchema.default({ telegram: { enabled: false, token: '', allowFrom: [], debug: false, dmPolicy: 'pairing', groupPolicy: 'open' }, whatsapp: { enabled: false, bridgeUrl: 'ws://localhost:3001', allowFrom: [] } }),
   // OpenClaw-style models configuration
-  models: ModelsConfigSchema,
-  gateway: GatewayConfigSchema,
-  tools: ToolsConfigSchema,
-  cron: CronConfigSchema,
-  plugins: PluginsConfigSchema,
-  modelsDev: ModelsDevConfigSchema,
-}).default({
-  agents: { defaults: { workspace: '~/.xopcbot/workspace', model: 'anthropic/claude-sonnet-4-5', models: {}, maxTokens: 8192, temperature: 0.7, maxToolIterations: 20 } },
-  channels: { telegram: { enabled: false, token: '', allowFrom: [], debug: false, dmPolicy: 'pairing', groupPolicy: 'open' }, whatsapp: { enabled: false, bridgeUrl: 'ws://localhost:3001', allowFrom: [] } },
-  models: { mode: 'merge', providers: {} },
-  gateway: { host: '0.0.0.0', port: 18790, auth: { mode: 'token' }, heartbeat: { enabled: true, intervalMs: 60000 }, maxSseConnections: 100, corsOrigins: ['*'] },
-  tools: { web: { search: { apiKey: '', maxResults: 5 } } },
-  cron: { enabled: true, maxConcurrentJobs: 5, defaultTimezone: 'UTC', historyRetentionDays: 7, enableMetrics: true },
-  plugins: {},
-  modelsDev: { enabled: true },
+  models: ModelsConfigSchema.default({ mode: 'merge', providers: {} }),
+  gateway: GatewayConfigSchema.default({ host: '0.0.0.0', port: 18790, auth: { mode: 'token' }, heartbeat: { enabled: true, intervalMs: 60000 }, maxSseConnections: 100, corsOrigins: ['*'] }),
+  tools: ToolsConfigSchema.default({ web: { search: { apiKey: '', maxResults: 5 } } }),
+  cron: CronConfigSchema.default({ enabled: true, maxConcurrentJobs: 5, defaultTimezone: 'UTC', historyRetentionDays: 7, enableMetrics: true }),
+  plugins: PluginsConfigSchema.default({}),
+  modelsDev: ModelsDevConfigSchema.default({ enabled: true }),
 });
 
 // ============================================

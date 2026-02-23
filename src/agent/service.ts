@@ -552,9 +552,7 @@ export class AgentService {
       const result = await this.modelManager.runWithFallback(
         this.agent,
         sessionKey,
-        userMessage,
-        this.modelManager.getCurrentProvider(),
-        this.modelManager.getCurrentModel()
+        userMessage
       );
 
       // Track usage

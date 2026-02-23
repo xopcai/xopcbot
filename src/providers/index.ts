@@ -23,6 +23,8 @@ export type { LLMProvider } from './pi-ai.js';
 export {
 	ModelRegistry,
 	createModelRegistry,
+	getAllProviderInfo,
+	type ProviderInfo,
 } from './registry.js';
 
 // New strict types

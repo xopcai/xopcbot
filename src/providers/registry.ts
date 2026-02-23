@@ -51,6 +51,13 @@ export class ModelRegistry {
 		this.loadModels().catch(console.error);
 	}
 
+	/**
+	 * Get information about all supported providers (static method).
+	 */
+	static getAllProviderInfo(): ProviderInfo[] {
+		return getAllProviderInfo();
+	}
+
 	updateConfig(config: Config): void {
 		this.config = config;
 		this.models = [];
@@ -302,4 +309,93 @@ export class ModelRegistry {
  */
 export function createModelRegistry(config?: Config): ModelRegistry {
 	return new ModelRegistry(config);
+}
+
+/**
+ * Resolve environment variables in config values.
+ * Alias for resolveEnvVars from schema.ts for backward compatibility.
+ */
+export function resolveConfigValue(value: string): string {
+	return resolveEnvVars(value);
+}
+
+/**
+ * Provider information for CLI display.
+ */
+export interface ProviderInfo {
+	id: string;
+	name: string;
+	supportsOAuth: boolean;
+	authType?: 'api_key' | 'token' | 'oauth';
+	envKey?: string;
+	models: Array<{ id: string; name: string }>;
+}
+
+/**
+ * Get information about all supported providers.
+ */
+export function getAllProviderInfo(): ProviderInfo[] {
+	const providers = getProviders() as string[];
+	const result: ProviderInfo[] = [];
+
+	// Provider name mapping
+	const providerNames: Record<string, string> = {
+		openai: 'OpenAI',
+		anthropic: 'Anthropic',
+		google: 'Google',
+		minimax: 'MiniMax',
+		'minimax-cn': 'MiniMax CN',
+		moonshot: 'Moonshot',
+		qwen: 'Qwen',
+		deepseek: 'DeepSeek',
+		groq: 'Groq',
+		openrouter: 'OpenRouter',
+		zhipu: 'Zhipu',
+		'zhipu-cn': 'Zhipu CN',
+		xai: 'xAI',
+		cerebras: 'Cerebras',
+		mistral: 'Mistral',
+		ollama: 'Ollama',
+	};
+
+	// OAuth providers
+	const oauthProviders = new Set(['anthropic', 'openai-codex', 'google-gemini-cli']);
+
+	// Environment variable key mapping
+	const envKeys: Record<string, string> = {
+		openai: 'OPENAI_API_KEY',
+		anthropic: 'ANTHROPIC_API_KEY',
+		google: 'GOOGLE_API_KEY',
+		minimax: 'MINIMAX_API_KEY',
+		'minimax-cn': 'MINIMAX_CN_API_KEY',
+		moonshot: 'MOONSHOT_API_KEY',
+		qwen: 'QWEN_API_KEY',
+		deepseek: 'DEEPSEEK_API_KEY',
+		groq: 'GROQ_API_KEY',
+		openrouter: 'OPENROUTER_API_KEY',
+		zhipu: 'ZHIPU_API_KEY',
+		'zhipu-cn': 'ZHIPU_CN_API_KEY',
+		xai: 'XAI_API_KEY',
+		cerebras: 'CEREBRAS_API_KEY',
+		mistral: 'MISTRAL_API_KEY',
+	};
+
+	for (const provider of providers) {
+		try {
+			const models = getModels(provider as KnownProvider) as Model<Api>[];
+			
+			result.push({
+				id: provider,
+				name: providerNames[provider] || provider,
+				supportsOAuth: oauthProviders.has(provider),
+				authType: oauthProviders.has(provider) ? 'oauth' : 'api_key',
+				envKey: envKeys[provider],
+				models: models.slice(0, 5).map(m => ({ id: m.id, name: m.name || m.id })),
+			});
+		} catch (error) {
+			// Skip providers that fail to load
+		}
+	}
+
+	return result;
 }

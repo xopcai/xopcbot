@@ -68,6 +68,9 @@ describe('ConfigHotReloader', () => {
     gateway: {
       host: '0.0.0.0',
       port: 18790,
+      auth: {
+        mode: 'token',
+      },
       heartbeat: {
         enabled: true,
         intervalMs: 60000,

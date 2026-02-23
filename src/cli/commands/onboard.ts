@@ -744,8 +744,9 @@ async function setupModel(existingConfig: any, ctx: CLIContext): Promise<any> {
 
   // Check environment variable first
   if (providerInfo.envKey) {
-    apiKey = process.env[providerInfo.envKey];
-    if (apiKey) {
+    const envValue = process.env[providerInfo.envKey] as string | undefined;
+    if (envValue) {
+      apiKey = envValue;
       console.log(`\n${colors.green('✓')} Found ${providerInfo.envKey} in environment`);
     }
   }
@@ -800,7 +801,11 @@ async function setupModel(existingConfig: any, ctx: CLIContext): Promise<any> {
 
     config.models = config.models || { mode: 'merge', providers: {} };
     config.models.providers = config.models.providers || {};
-    config.models.providers[provider] = { apiKey };
+    if (apiKey) {
+      config.models.providers[provider] = { apiKey };
+    } else {
+      config.models.providers[provider] = {};
+    }
     config.agents = config.agents || {};
     config.agents.defaults = config.agents.defaults || {};
     config.agents.defaults.model = { primary: `${provider}/${model}`, fallbacks: [] };
@@ -824,8 +829,10 @@ async function setupModel(existingConfig: any, ctx: CLIContext): Promise<any> {
     // It's stored in auth-profiles.json via AuthProfiles
     config.models.providers[provider] = {};
     console.log('\n✅ Credentials saved to auth profiles');
-  } else {
+  } else if (apiKey) {
     config.models.providers[provider] = { apiKey };
+  } else {
+    config.models.providers[provider] = {};
   }
 
   config.agents = config.agents || {};

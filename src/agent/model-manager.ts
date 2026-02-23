@@ -15,6 +15,7 @@ const log = createLogger('ModelManager');
 
 export interface ModelManagerConfig {
   config?: Config;
+  defaultModel?: string;
 }
 
 export interface RunResult {
@@ -44,9 +45,12 @@ export class ModelManager {
   private modelRegistry: ModelRegistry;
   private config?: Config;
   private sessionModels: Map<string, string> = new Map();
+  private defaultModelRef?: string;
+  private channelManager: any = null;
 
   constructor(config: ModelManagerConfig = {}) {
     this.config = config.config;
+    this.defaultModelRef = config.defaultModel;
     this.modelRegistry = new ModelRegistry(config.config ?? null, { ollamaEnabled: false });
   }
 
@@ -183,5 +187,41 @@ export class ModelManager {
 
   getModelsByProvider(): Map<string, Model<Api>[]> {
     return this.modelRegistry.getByProvider();
+  }
+
+  /**
+   * Set channel manager reference (for streaming control).
+   */
+  setChannelManager(channelManager: any): void {
+    this.channelManager = channelManager;
+  }
+
+  /**
+   * Get current model reference string.
+   */
+  getCurrentModel(): string {
+    if (this.defaultModelRef) {
+      return this.defaultModelRef;
+    }
+    if (this.config?.agents?.defaults?.model) {
+      const modelConfig = this.config.agents.defaults.model;
+      if (typeof modelConfig === 'string') {
+        return modelConfig;
+      }
+      return modelConfig.primary;
+    }
+    return 'anthropic/claude-sonnet-4-5';
+  }
+
+  /**
+   * Get current provider from model reference.
+   */
+  getCurrentProvider(): string {
+    const modelRef = this.getCurrentModel();
+    const slashIndex = modelRef.indexOf('/');
+    if (slashIndex === -1) {
+      return 'anthropic';
+    }
+    return modelRef.substring(0, slashIndex);
   }
 }

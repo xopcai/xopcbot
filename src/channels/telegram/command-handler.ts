@@ -61,7 +61,7 @@ export function createTelegramCommandHandler(deps: TelegramCommandHandlerDeps) {
   // ========== Helper Functions ==========
 
   const getAvailableProviders = (): ProviderInfo[] => {
-    const providers = config.providers || {};
+    const providers = config.models?.providers || {};
     const available: ProviderInfo[] = [];
 
     for (const [name] of Object.entries(providers)) {
@@ -82,8 +82,8 @@ export function createTelegramCommandHandler(deps: TelegramCommandHandlerDeps) {
   };
 
   const getModelsForProvider = (providerId: string): ModelInfo[] => {
-    const providerConfig = (config.providers as any)?.[providerId];
-    const modelList = providerConfig?.models || DEFAULT_MODELS[providerId] || ['default'];
+    const providerConfig = config.models?.providers?.[providerId];
+    const modelList = providerConfig?.models?.map((m: any) => m.id) || DEFAULT_MODELS[providerId] || ['default'];
     
     return modelList.map((modelId: string) => ({
       id: `${providerId}/${modelId}`,

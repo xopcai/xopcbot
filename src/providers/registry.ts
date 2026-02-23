@@ -19,6 +19,8 @@ import type { Config, ModelDef, ProviderConfig } from '../config/schema.js';
 import { resolveEnvVars } from '../config/schema.js';
 import { resolveModelRef } from './model-resolver.js';
 import { createProviderConfig } from './config.js';
+import { listProfilesForProvider, getProfile } from '../auth/profiles/profiles.js';
+import { resolveApiKeyForProfile } from '../auth/profiles/oauth.js';
 
 const providerConfig = createProviderConfig();
 const OLLAMA_API_BASE = providerConfig.ollamaBaseUrl;
@@ -45,25 +47,27 @@ export class ModelRegistry {
 	constructor(config?: Config | null, options?: { ollamaEnabled?: boolean }) {
 		this.config = config ?? null;
 		this.ollamaEnabled = options?.ollamaEnabled ?? true;
-		this.loadModels();
+		// Fire and forget - models will be loaded in background
+		this.loadModels().catch(console.error);
 	}
 
 	updateConfig(config: Config): void {
 		this.config = config;
 		this.models = [];
-		this.loadModels();
+		// Fire and forget
+		this.loadModels().catch(console.error);
 	}
 
-	private loadModels(): void {
+	private async loadModels(): Promise<void> {
 		// Load built-in models from pi-ai
 		this.loadBuiltInModels();
 
 		// Load custom models from config.models.providers
-		this.loadCustomModels();
+		await this.loadCustomModels();
 
 		// Discover Ollama models
 		if (this.ollamaEnabled) {
-			this.discoverOllamaModels();
+			await this.discoverOllamaModels();
 		}
 	}
 
@@ -79,7 +83,7 @@ export class ModelRegistry {
 		}
 	}
 
-	private loadCustomModels(): void {
+	private async loadCustomModels(): Promise<void> {
 		if (!this.config?.models?.providers) return;
 
 		for (const [providerName, providerCfg] of Object.entries(this.config.models.providers)) {
@@ -87,6 +91,24 @@ export class ModelRegistry {
 
 			// Resolve API key with env variable support
 			let apiKey = providerCfg.apiKey ?? '';
+			
+			// If no API key in config, check for OAuth profiles
+			if (!apiKey) {
+				const profiles = listProfilesForProvider(providerName);
+				if (profiles.length > 0 && profiles[0]?.hasKey) {
+					try {
+						const result = await resolveApiKeyForProfile(profiles[0].profileId);
+						if (result) {
+							apiKey = result.apiKey;
+							console.log(`[ModelRegistry] ${providerName}: Using OAuth credentials from auth profile`);
+						}
+					} catch (err) {
+						console.warn(`[ModelRegistry] ${providerName}: Failed to get OAuth API key:`, err);
+					}
+				}
+			}
+			
+			// Handle env var substitution
 			if (apiKey?.startsWith('${') && apiKey?.endsWith('}')) {
 				try {
 					apiKey = resolveEnvVars(apiKey);
@@ -98,6 +120,12 @@ export class ModelRegistry {
 					);
 					continue; // Skip this provider if API key is not resolvable
 				}
+			}
+
+			// Skip if still no API key
+			if (!apiKey) {
+				console.log(`[ModelRegistry] ${providerName}: No API key configured, skipping`);
+				continue;
 			}
 
 			const api = (providerCfg.api ?? 'openai-completions') as Api;
@@ -248,9 +276,22 @@ export class ModelRegistry {
 		return this.models.filter((m) => m.provider.toLowerCase() === provider.toLowerCase());
 	}
 
-	refresh(): void {
+	/**
+	 * Refresh the model registry (async)
+	 */
+	async refresh(): Promise<void> {
 		this.models = [];
-		this.loadModels();
+		await this.loadModels();
+	}
+
+	/**
+	 * Wait for models to be loaded (useful for OAuth providers)
+	 */
+	async waitForModels(timeoutMs = 5000): Promise<void> {
+		const start = Date.now();
+		while (this.models.length === 0 && Date.now() - start < timeoutMs) {
+			await new Promise((resolve) => setTimeout(resolve, 100));
+		}
 	}
 }
 

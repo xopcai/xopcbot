@@ -13,38 +13,42 @@ All xopcbot configuration is centralized in the `~/.config/xopcbot/config.json` 
         "primary": "anthropic/claude-sonnet-4-5",
         "fallbacks": ["openai/gpt-4o", "minimax/minimax-m2.1"]
       },
+      "models": {
+        "anthropic/claude-sonnet-4-5": { "alias": "claude" },
+        "openai/gpt-4o": { "alias": "gpt4" }
+      },
+      "imageModel": {
+        "primary": "openrouter/qwen/qwen-2.5-vl-72b-instruct:free",
+        "fallbacks": ["openrouter/google/gemini-2.0-flash-vision:free"]
+      },
       "max_tokens": 8192,
       "temperature": 0.7,
       "max_tool_iterations": 20
     }
   },
-  "providers": {
-    "openai": {
-      "api_key": "sk-...",
-      "base_url": "https://api.openai.com/v1"
-    },
-    "anthropic": {
-      "api_key": "sk-ant-..."
-    },
-    "minimax": {
-      "api_key": "..."
-    },
-    "openrouter": {
-      "api_key": "sk-or-...",
-      "base_url": "https://openrouter.ai/api/v1"
-    },
-    "groq": {
-      "api_key": "gsk_..."
-    },
-    "google": {
-      "api_key": "AIza..."
-    },
-    "deepseek": {
-      "api_key": "..."
-    },
-    "ollama": {
-      "enabled": true,
-      "base_url": "http://127.0.0.1:11434/v1"
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "openai": {
+        "apiKey": "${OPENAI_API_KEY}",
+        "baseUrl": "https://api.openai.com/v1",
+        "api": "openai-completions",
+        "models": [
+          { "id": "gpt-4o", "name": "GPT-4o", "contextWindow": 128000, "maxTokens": 16384 }
+        ]
+      },
+      "anthropic": {
+        "apiKey": "${ANTHROPIC_API_KEY}",
+        "api": "anthropic-messages",
+        "models": [
+          { "id": "claude-sonnet-4-5", "name": "Claude Sonnet 4.5", "contextWindow": 200000, "maxTokens": 8192 }
+        ]
+      },
+      "ollama": {
+        "baseUrl": "http://127.0.0.1:11434/v1",
+        "api": "openai-completions",
+        "models": []
+      }
     }
   },
   "channels": {
@@ -87,6 +91,8 @@ Default configuration for agents.
 |-------|------|---------|-------------|
 | `workspace` | string | `~/.xopcbot/workspace` | Workspace directory |
 | `model` | string / object | `anthropic/claude-sonnet-4-5` | Default model |
+| `models` | object | `{}` | Model aliases map |
+| `imageModel` | string / object | - | Image/Vision model config |
 | `max_tokens` | number | `8192` | Maximum output tokens |
 | `temperature` | number | `0.7` | Temperature parameter (0-2) |
 | `max_tool_iterations` | number | `20` | Maximum tool call iterations |
@@ -161,10 +167,12 @@ When the primary model fails, xopcbot automatically tries fallback models:
       }
     }
   },
-  "providers": {
-    "anthropic": { "api_key": "sk-ant-..." },
-    "openai": { "api_key": "sk-..." },
-    "minimax": { "api_key": "..." }
+  "models": {
+    "providers": {
+      "anthropic": { "apiKey": "${ANTHROPIC_API_KEY}" },
+      "openai": { "apiKey": "${OPENAI_API_KEY}" },
+      "minimax": { "apiKey": "${MINIMAX_API_KEY}" }
+    }
   }
 }
 ```
@@ -173,18 +181,83 @@ Model ID formats:
 - **Short format**: `gpt-4o` (uses default provider)
 - **Full format**: `anthropic/claude-sonnet-4-5`
 
-### providers
+### agents.defaults.models
 
-LLM provider configurations.
-
-#### openai
+Model aliases configuration. Map full model IDs to short aliases.
 
 ```json
 {
-  "providers": {
-    "openai": {
-      "api_key": "sk-...",
-      "api_base": "https://api.openai.com/v1"
+  "agents": {
+    "defaults": {
+      "models": {
+        "kimi/kimi-k2.5": { "alias": "kimi" },
+        "minimax/MiniMax-M2.1": { "alias": "minimax" },
+        "anthropic/claude-sonnet-4-5": { "alias": "claude", "params": { "temperature": 0.8 } }
+      }
+    }
+  }
+}
+```
+
+After defining aliases, you can use them:
+```json
+{
+  "model": { "primary": "kimi" }
+}
+```
+
+### agents.defaults.imageModel
+
+Configuration for image/vision model used in image understanding tasks.
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "imageModel": {
+        "primary": "openrouter/qwen/qwen-2.5-vl-72b-instruct:free",
+        "fallbacks": [
+          "openrouter/google/gemini-2.0-flash-vision:free"
+        ]
+      }
+    }
+  }
+}
+```
+
+### models (OpenClaw-style)
+
+LLM provider configuration in OpenClaw format.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `mode` | string | `merge` | Merge or replace built-in providers |
+| `providers` | object | `{}` | Provider configurations |
+
+#### Provider Configuration
+
+Each provider under `models.providers`:
+
+```json
+{
+  "models": {
+    "providers": {
+      "kimi": {
+        "baseUrl": "https://api.moonshot.cn/v1",
+        "apiKey": "${KIMI_API_KEY}",
+        "api": "anthropic-messages",
+        "models": [
+          {
+            "id": "kimi-k2.5",
+            "name": "Kimi K2.5",
+            "reasoning": false,
+            "input": ["text"],
+            "cost": { "input": 0, "output": 0 },
+            "contextWindow": 256000,
+            "maxTokens": 8192
+          }
+        ]
+      }
     }
   }
 }
@@ -192,83 +265,31 @@ LLM provider configurations.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `api_key` | string | OpenAI API Key |
-| `api_base` | string | (Optional) Custom API endpoint |
+| `baseUrl` | string | API base URL |
+| `apiKey` | string | API key (supports `${ENV_VAR}` syntax) |
+| `api` | string | API type: `openai-completions`, `anthropic-messages`, etc. |
+| `models` | array | Model definitions |
 
-#### anthropic
+#### API Types
 
-```json
-{
-  "providers": {
-    "anthropic": {
-      "api_key": "sk-ant-..."
-    }
-  }
-}
-```
+- `openai-completions` - OpenAI Chat Completions API
+- `openai-responses` - OpenAI Responses API
+- `anthropic-messages` - Anthropic Messages API
+- `google-generative-ai` - Google Generative AI API
+- `github-copilot` - GitHub Copilot API
+- `bedrock-converse-stream` - Amazon Bedrock
 
-#### openrouter
+#### Model Definition
 
-```json
-{
-  "providers": {
-    "openrouter": {
-      "api_key": "sk-or-...",
-      "api_base": "https://openrouter.ai/api/v1"
-    }
-  }
-}
-```
-
-#### groq
-
-```json
-{
-  "providers": {
-    "groq": {
-      "api_key": "gsk_..."
-    }
-  }
-}
-```
-
-#### gemini
-
-```json
-{
-  "providers": {
-    "gemini": {
-      "api_key": "AIza..."
-    }
-  }
-}
-```
-
-#### zhipu (智谱 AI)
-
-```json
-{
-  "providers": {
-    "zhipu": {
-      "api_key": "...",
-      "api_base": "https://open.bigmodel.cn/api/paas/v4"
-    }
-  }
-}
-```
-
-#### vllm (Local deployment)
-
-```json
-{
-  "providers": {
-    "vllm": {
-      "api_key": "dummy",
-      "api_base": "http://localhost:8000/v1"
-    }
-  }
-}
-```
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `id` | string | - | Model ID |
+| `name` | string | - | Display name |
+| `reasoning` | boolean | `false` | Supports reasoning/thinking |
+| `input` | array | `["text"]` | Input modalities: `text`, `image` |
+| `cost` | object | `{0,0,0,0}` | Pricing per 1M tokens |
+| `contextWindow` | number | `128000` | Context window size |
+| `maxTokens` | number | `16384` | Max output tokens |
 
 ### channels
 
@@ -376,6 +397,28 @@ export MINIMAX_API_KEY="..."
 export DEEPSEEK_API_KEY="..."
 ```
 
+### Env Var Substitution in Config
+
+Reference env vars in any config string value with `${VAR_NAME}`:
+
+```json
+{
+  "models": {
+    "providers": {
+      "kimi": {
+        "apiKey": "${KIMI_API_KEY}",
+        "baseUrl": "https://api.moonshot.cn/v1"
+      }
+    }
+  }
+}
+```
+
+Rules:
+- Only uppercase names matched: `[A-Z_][A-Z0-9_]*`
+- Missing/empty vars throw an error at load time
+- Escape with `$${VAR}` for literal output
+
 ## Config File Locations
 
 | Purpose | Location |
@@ -400,17 +443,19 @@ npm run dev -- cron list
 
 ### Q: Need to restart after config changes?
 
-Yes, restart the service after modifying `config.json`.
+Yes, restart the service after modifying config.json.
 
 ### Q: How to use multiple providers?
 
-Configure multiple providers, agent automatically selects based on model name:
+Configure multiple providers in `models.providers`, agent automatically selects based on model name:
 
 ```json
 {
-  "providers": {
-    "openai": { "api_key": "sk-..." },
-    "anthropic": { "api_key": "sk-ant-..." }
+  "models": {
+    "providers": {
+      "openai": { "apiKey": "${OPENAI_API_KEY}" },
+      "anthropic": { "apiKey": "${ANTHROPIC_API_KEY}" }
+    }
   }
 }
 ```
@@ -421,11 +466,11 @@ Set different models to use different providers.
 
 - Don't commit config files to Git
 - Use environment variables for sensitive data
-- Set config file permissions to `600`
+- Set config file permissions to 600
 
 ### modelsDev
 
-Configuration for models.dev integration. models.dev provides a comprehensive database of open-source AI model specifications.
+Models.dev integration configuration. models.dev provides a comprehensive database of open-source AI model specifications.
 
 ```json
 {
@@ -439,4 +484,33 @@ Configuration for models.dev integration. models.dev provides a comprehensive da
 |-------|------|---------|-------------|
 | `enabled` | boolean | `true` | Enable/disable models.dev model data |
 
-When enabled, xopcbot automatically loads model information from the built-in local cache, which includes models from providers like OpenAI, Anthropic, Google, Groq, DeepSeek, and more. This provides faster model listing without requiring network requests at runtime.
+When enabled, xopcbot automatically loads model information from the built-in local cache.
+
+## Migration from Old Config
+
+### Old Format (Deprecated)
+```json
+{
+  "providers": {
+    "kimi": { "apiKey": "sk-xxx", "baseUrl": "..." }
+  }
+}
+```
+
+### New Format (OpenClaw-style)
+```json
+{
+  "models": {
+    "providers": {
+      "kimi": {
+        "apiKey": "${KIMI_API_KEY}",
+        "baseUrl": "https://api.moonshot.cn/v1",
+        "api": "anthropic-messages",
+        "models": [{ "id": "kimi-k2.5", "name": "Kimi K2.5" }]
+      }
+    }
+  }
+}
+```
+
+See [models-config.md](./models-config.md) for detailed migration guide.

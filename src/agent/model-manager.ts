@@ -1,8 +1,7 @@
 /**
- * Model management module
+ * Model Manager
  * 
- * Handles model selection, switching, and automatic fallback
- * when a provider fails.
+ * OpenClaw-style model management with aliases and fallbacks.
  */
 
 import { Agent, type AgentMessage } from '@mariozechner/pi-agent-core';
@@ -10,12 +9,11 @@ import type { Model, Api } from '@mariozechner/pi-ai';
 import type { Config } from '../config/schema.js';
 import { createLogger } from '../utils/logger.js';
 import { ModelRegistry } from '../providers/registry.js';
-import { isFailoverError, describeFailoverError, resolveFallbackCandidates } from './fallback/index.js';
+import { resolveModelWithFallbacks, getPrimaryModel } from '../providers/model-resolver.js';
 
 const log = createLogger('ModelManager');
 
 export interface ModelManagerConfig {
-  defaultModel?: string;
   config?: Config;
 }
 
@@ -28,9 +26,6 @@ export interface RunResult {
   };
 }
 
-/**
- * Get the last assistant content from agent messages
- */
 function getLastAssistantContent(agent: Agent): string | null {
   const messages = agent.state.messages;
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -47,140 +42,103 @@ function getLastAssistantContent(agent: Agent): string | null {
 
 export class ModelManager {
   private modelRegistry: ModelRegistry;
-  private defaultModel: string;
   private config?: Config;
-  private currentModelName: string;
-  private currentProvider: string;
   private sessionModels: Map<string, string> = new Map();
-  private channelManager?: any;
 
   constructor(config: ModelManagerConfig = {}) {
     this.config = config.config;
-    this.defaultModel = config.defaultModel || 'minimax/MiniMax-M2.5';
-    this.currentModelName = this.defaultModel;
-    this.currentProvider = 'google';
-    
     this.modelRegistry = new ModelRegistry(config.config ?? null, { ollamaEnabled: false });
   }
 
-  /**
-   * Set channel manager reference for accessing session-specific settings
-   */
-  setChannelManager(channelManager: any): void {
-    this.channelManager = channelManager;
-  }
-
-  /**
-   * Get the model registry
-   */
   getRegistry(): ModelRegistry {
     return this.modelRegistry;
   }
 
   /**
-   * Get current model name
+   * Get the default model from config.
    */
-  getCurrentModel(): string {
-    return this.currentModelName;
+  getDefaultModel(): Model<Api> | undefined {
+    if (!this.config) return undefined;
+    const primary = getPrimaryModel(this.config);
+    return this.modelRegistry.find(primary.provider, primary.model);
   }
 
   /**
-   * Get current provider
+   * Switch model for a specific session.
    */
-  getCurrentProvider(): string {
-    return this.currentProvider;
-  }
+  async switchModelForSession(sessionKey: string, modelRef: string): Promise<boolean> {
+    if (!this.config) return false;
 
-  /**
-   * Switch model for a specific session
-   */
-  async switchModelForSession(sessionKey: string, modelId: string): Promise<boolean> {
-    try {
-      const found = this.modelRegistry.findByRef(modelId);
-      if (!found) {
-        log.warn({ modelId }, 'Model not found in registry');
-        return false;
-      }
-
-      this.sessionModels.set(sessionKey, modelId);
-      log.info({ sessionKey, modelId }, 'Model switched for session');
-      return true;
-    } catch (err) {
-      log.error({ err, sessionKey, modelId }, 'Failed to switch model');
+    const resolved = resolveModelWithFallbacks(modelRef, this.config);
+    if (!resolved?.primary) {
+      log.warn({ modelRef }, 'Could not resolve model reference');
       return false;
     }
+
+    const found = this.modelRegistry.find(resolved.primary.provider, resolved.primary.model);
+    if (!found) {
+      log.warn({ modelRef, resolved }, 'Model not found in registry');
+      return false;
+    }
+
+    this.sessionModels.set(sessionKey, modelRef);
+    log.info({ sessionKey, modelRef, resolved }, 'Model switched for session');
+    return true;
   }
 
   /**
-   * Get model for session, checking session override first
+   * Get model for session, checking session override first.
    */
-  getModelForSession(sessionKey: string): string {
-    // Check if there's a session-specific model override
-    const sessionModel = this.sessionModels.get(sessionKey);
-    if (sessionModel) {
-      return sessionModel;
-    }
+  getModelForSession(sessionKey: string): Model<Api> | undefined {
+    if (!this.config) return undefined;
 
-    // Check Telegram channel for session model
-    if (this.channelManager && sessionKey.startsWith('telegram:')) {
-      const telegram = this.channelManager.getChannel('telegram');
-      if (telegram?.getSessionModel) {
-        const tgModel = telegram.getSessionModel(sessionKey);
-        if (tgModel) {
-          // Cache it for future use
-          this.sessionModels.set(sessionKey, tgModel);
-          return tgModel;
-        }
+    // Check session override
+    const sessionRef = this.sessionModels.get(sessionKey);
+    if (sessionRef) {
+      const resolved = resolveModelWithFallbacks(sessionRef, this.config);
+      if (resolved?.primary) {
+        return this.modelRegistry.find(resolved.primary.provider, resolved.primary.model);
       }
     }
 
-    // Fall back to default
-    return this.defaultModel;
+    // Use default
+    return this.getDefaultModel();
   }
 
   /**
-   * Apply model to agent if different from current
+   * Apply model to agent for session.
    */
   async applyModelForSession(agent: Agent, sessionKey: string): Promise<void> {
-    const targetModelId = this.getModelForSession(sessionKey);
-    
-    if (targetModelId === this.currentModelName) {
-      return; // No change needed
+    const model = this.getModelForSession(sessionKey);
+    if (!model) {
+      log.warn({ sessionKey }, 'No model found for session');
+      return;
     }
 
-    try {
-      const found = this.modelRegistry.findByRef(targetModelId);
-      if (!found) {
-        log.warn({ modelId: targetModelId }, 'Model not found, keeping current');
-        return;
-      }
-
-      agent.setModel(found);
-      this.currentModelName = targetModelId;
-      this.currentProvider = found.provider || 'unknown';
-      
-      log.info({ sessionKey, modelId: targetModelId }, 'Applied model for session');
-    } catch (err) {
-      log.error({ err, sessionKey, modelId: targetModelId }, 'Failed to apply model');
-    }
+    agent.setModel(model);
+    log.info({ sessionKey, model: `${model.provider}/${model.id}` }, 'Applied model for session');
   }
 
   /**
-   * Run the agent with automatic model fallback on failure.
+   * Run agent with automatic fallback on failure.
    */
   async runWithFallback(
     agent: Agent,
     sessionKey: string,
-    userMessage: AgentMessage,
-    provider: string,
-    model: string
+    userMessage: AgentMessage
   ): Promise<RunResult> {
-    const candidates = resolveFallbackCandidates({
-      cfg: this.config ?? undefined,
-      provider,
-      model,
-    });
+    if (!this.config) {
+      throw new Error('Config not available');
+    }
 
+    const modelSelection = this.sessionModels.get(sessionKey) ?? this.config.agents.defaults.model;
+    const resolved = resolveModelWithFallbacks(modelSelection, this.config);
+
+    if (!resolved?.primary) {
+      throw new Error('No primary model configured');
+    }
+
+    const candidates = [resolved.primary, ...resolved.fallbacks];
     let lastError: unknown;
 
     for (let i = 0; i < candidates.length; i++) {
@@ -188,93 +146,41 @@ export class ModelManager {
       const candidateModel = this.modelRegistry.find(candidate.provider, candidate.model);
 
       if (!candidateModel) {
-        log.warn(
-          { provider: candidate.provider, model: candidate.model },
-          'Fallback model not found in registry'
-        );
+        log.warn({ provider: candidate.provider, model: candidate.model }, 'Model not found in registry');
         continue;
       }
 
-      log.info(
-        { attempt: i + 1, total: candidates.length, provider: candidate.provider, model: candidate.model },
-        'Attempting model'
-      );
+      log.info({ attempt: i + 1, total: candidates.length, model: candidate.fullId }, 'Attempting model');
 
       try {
-        // Update the agent with the new model
         agent.setModel(candidateModel);
-        this.currentProvider = candidate.provider;
-        this.currentModelName = candidate.model;
-
-        // Execute the prompt
         await agent.prompt(userMessage);
         await agent.waitForIdle();
 
-        // Get usage from agent state if available
-        const usage = (agent.state as any).lastUsage || undefined;
-
-        return {
-          content: getLastAssistantContent(agent),
-          usage,
-        };
+        const usage = (agent.state as any).lastUsage;
+        return { content: getLastAssistantContent(agent), usage };
       } catch (err) {
         lastError = err;
-
-        // Don't fallback on user abort
-        if (err instanceof DOMException && err.name === 'AbortError') {
-          throw err;
-        }
-
-        if (isFailoverError(err)) {
-          const described = describeFailoverError(err);
-          log.warn(
-            { provider: candidate.provider, model: candidate.model, ...described },
-            'Model call failed, trying fallback'
-          );
-        } else {
-          log.warn(
-            { provider: candidate.provider, model: candidate.model, error: err },
-            'Model call failed with non-failover error'
-          );
-        }
-
-        // Continue to next candidate
-        continue;
+        log.warn({ err, model: candidate.fullId }, 'Model call failed');
       }
     }
 
-    // All models failed
-    if (lastError) {
-      throw lastError;
-    }
-
+    if (lastError) throw lastError;
     return { content: null };
   }
 
-  /**
-   * Find model by reference (provider/modelId)
-   */
   findByRef(ref: string): Model<Api> | undefined {
     return this.modelRegistry.findByRef(ref);
   }
 
-  /**
-   * Find model by provider and ID
-   */
   find(provider: string, modelId: string): Model<Api> | undefined {
     return this.modelRegistry.find(provider, modelId);
   }
 
-  /**
-   * Get all available models
-   */
   getAllModels(): Model<Api>[] {
     return this.modelRegistry.getAll();
   }
 
-  /**
-   * Get models grouped by provider
-   */
   getModelsByProvider(): Map<string, Model<Api>[]> {
     return this.modelRegistry.getByProvider();
   }

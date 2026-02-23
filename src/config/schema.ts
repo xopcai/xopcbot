@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { homedir } from 'os';
 
 // ============================================
-// Provider Configuration (camelCase)
+// OpenClaw-Style Model Configuration
 // ============================================
 
 // Model cost schema
@@ -13,8 +13,8 @@ export const ModelCostSchema = z.object({
   cacheWrite: z.number().default(0),
 });
 
-// Detailed model metadata schema
-export const ModelMetadataSchema = z.object({
+// Model definition in providers
+export const ModelDefSchema = z.object({
   id: z.string(),
   name: z.string(),
   reasoning: z.boolean().default(false),
@@ -24,92 +24,54 @@ export const ModelMetadataSchema = z.object({
   maxTokens: z.number().default(16384),
 });
 
-// OpenAI-compatible provider schema
-export const OpenAIProviderSchema = z.object({
-  apiKey: z.string().default(''),
+// Provider configuration (OpenClaw-style)
+export const ProviderConfigSchema = z.object({
   baseUrl: z.string().optional(),
-  api: z.enum(['openai-completions', 'anthropic-messages', 'google-generative-ai', 'github-copilot']).optional(),
-  models: z.union([
-    z.array(z.string()), // Simple string array (backward compatible)
-    z.array(ModelMetadataSchema), // Detailed model objects
+  apiKey: z.string().optional(),
+  api: z.enum([
+    'openai-completions',
+    'openai-responses',
+    'anthropic-messages',
+    'google-generative-ai',
+    'github-copilot',
+    'bedrock-converse-stream',
   ]).optional(),
+  models: z.array(ModelDefSchema).optional(),
 });
 
-// Anthropic provider schema
-export const AnthropicProviderSchema = z.object({
-  apiKey: z.string().default(''),
-  models: z.array(z.string()).optional(),
+// Models configuration (OpenClaw-style models.providers)
+export const ModelsConfigSchema = z.object({
+  mode: z.enum(['merge', 'replace']).default('merge'),
+  providers: z.record(z.string(), ProviderConfigSchema).default({}),
 });
 
-// Ollama provider schema
-export const OllamaProviderSchema = z.object({
-  enabled: z.boolean().default(true),
-  baseUrl: z.string().default('http://127.0.0.1:11434/v1'),
-  models: z.array(z.string()).optional(),
-  autoDiscovery: z.boolean().default(true),
-}).strict();
-
-// Unified providers config
-export const ProvidersConfigSchema = z.object({
-  // OpenAI-compatible providers
-  openai: OpenAIProviderSchema.optional(),
-  qwen: OpenAIProviderSchema.optional(),
-  kimi: OpenAIProviderSchema.optional(),
-  moonshot: OpenAIProviderSchema.optional(),
-  minimax: OpenAIProviderSchema.optional(),
-  'minimax-cn': OpenAIProviderSchema.optional(),
-  zhipu: OpenAIProviderSchema.optional(),
-  'zhipu-cn': OpenAIProviderSchema.optional(),
-  deepseek: OpenAIProviderSchema.optional(),
-  groq: OpenAIProviderSchema.optional(),
-  openrouter: OpenAIProviderSchema.optional(),
-  xai: OpenAIProviderSchema.optional(),
-  bedrock: OpenAIProviderSchema.optional(),
-  bailian: OpenAIProviderSchema.optional(),
-
-  // Native providers
-  anthropic: AnthropicProviderSchema.optional(),
-  google: AnthropicProviderSchema.optional(),
-
-  // Local providers
-  ollama: OllamaProviderSchema.optional(),
-}).strict().default({
-  openai: { apiKey: '' },
-  qwen: { apiKey: '' },
-  kimi: { apiKey: '' },
-  moonshot: { apiKey: '' },
-  minimax: { apiKey: '' },
-  'minimax-cn': { apiKey: '' },
-  zhipu: { apiKey: '' },
-  'zhipu-cn': { apiKey: '' },
-  deepseek: { apiKey: '' },
-  groq: { apiKey: '' },
-  openrouter: { apiKey: '' },
-  xai: { apiKey: '' },
-  bedrock: { apiKey: '' },
-  bailian: { apiKey: '' },
-  anthropic: { apiKey: '' },
-  google: { apiKey: '' },
-  ollama: {
-    enabled: true,
-    baseUrl: 'http://127.0.0.1:11434/v1',
-    autoDiscovery: true,
-  },
+// Model alias configuration
+export const ModelAliasSchema = z.object({
+  alias: z.string().optional(),
+  params: z.record(z.string(), z.unknown()).optional(),
 });
+
+// Model selection with fallbacks
+export const ModelSelectionSchema = z.union([
+  z.string(),
+  z.object({
+    primary: z.string(),
+    fallbacks: z.array(z.string()).optional(),
+  }),
+]);
 
 // ============================================
-// Agent Configs (camelCase)
+// Agent Configs
 // ============================================
 
 export const AgentDefaultsSchema = z.object({
   workspace: z.string().default('~/.xopcbot/workspace'),
-  model: z.union([
-    z.string(),
-    z.object({
-      primary: z.string().optional(),
-      fallbacks: z.array(z.string()).optional(),
-    }).strict(),
-  ]).default('anthropic/claude-sonnet-4-5'),
+  // Model selection: string or { primary, fallbacks }
+  model: ModelSelectionSchema.default('anthropic/claude-sonnet-4-5'),
+  // Model aliases map: { "provider/model": { alias: "shortname" } }
+  models: z.record(z.string(), ModelAliasSchema).default({}),
+  // Image model configuration
+  imageModel: ModelSelectionSchema.optional(),
   maxTokens: z.number().default(8192),
   temperature: z.number().default(0.7),
   maxToolIterations: z.number().default(20),
@@ -130,37 +92,11 @@ export const AgentDefaultsSchema = z.object({
 });
 
 export const AgentsConfigSchema = z.object({
-  defaults: AgentDefaultsSchema.optional(),
-}).default({
-  defaults: {
-    workspace: '~/.xopcbot/workspace',
-    model: 'anthropic/claude-sonnet-4-5',
-    maxTokens: 8192,
-    temperature: 0.7,
-    maxToolIterations: 20,
-    compaction: {
-      enabled: true,
-      mode: 'default',
-      reserveTokens: 8000,
-      triggerThreshold: 0.8,
-      minMessagesBeforeCompact: 10,
-      keepRecentMessages: 5,
-    },
-    pruning: {
-      enabled: true,
-      maxToolResultChars: 10000,
-      headKeepRatio: 0.3,
-      tailKeepRatio: 0.3,
-    },
-  },
+  defaults: AgentDefaultsSchema.default({}),
 });
 
 // ============================================
-// Channel Configs (camelCase)
-// ============================================
-
-// ============================================
-// Telegram Channel Configuration
+// Channel Configs
 // ============================================
 
 export const TelegramTopicConfigSchema = z.object({
@@ -201,14 +137,11 @@ export const TelegramAccountConfigSchema = z.object({
 
 export const TelegramConfigSchema = z.object({
   enabled: z.boolean().default(false),
-  // Legacy single-account config (backward compatible)
   token: z.string().default(''),
   allowFrom: z.array(z.union([z.string(), z.number()])).default([]),
   apiRoot: z.string().optional(),
   debug: z.boolean().default(false),
-  // Multi-account config (new)
   accounts: z.record(z.string(), TelegramAccountConfigSchema).optional(),
-  // Default policies
   dmPolicy: z.enum(['pairing', 'allowlist', 'open', 'disabled']).default('pairing'),
   groupPolicy: z.enum(['open', 'disabled', 'allowlist']).default('open'),
 });
@@ -220,410 +153,163 @@ export const WhatsAppConfigSchema = z.object({
 });
 
 export const ChannelsConfigSchema = z.object({
-  telegram: TelegramConfigSchema.optional(),
-  whatsapp: WhatsAppConfigSchema.optional(),
-}).default({
-  telegram: {
-    enabled: false,
-    token: '',
-    allowFrom: [],
-    debug: false,
-    dmPolicy: 'pairing' as const,
-    groupPolicy: 'open' as const,
-  },
-  whatsapp: {
-    enabled: false,
-    bridgeUrl: 'ws://localhost:3001',
-    allowFrom: [],
-  },
-});
-
-export const WebSearchConfigSchema = z.object({
-  apiKey: z.string(),
-  maxResults: z.number(),
-}).default({
-  apiKey: '',
-  maxResults: 5,
-});
-
-export const WebToolsConfigSchema = z.object({
-  search: WebSearchConfigSchema.optional(),
-});
-
-export const ToolsConfigSchema = z.object({
-  web: WebToolsConfigSchema.optional(),
-}).default({
-  web: {
-    search: {
-      apiKey: '',
-      maxResults: 5,
-    },
-  },
+  telegram: TelegramConfigSchema.default({}),
+  whatsapp: WhatsAppConfigSchema.default({}),
 });
 
 // ============================================
-// Gateway Authentication Configuration
+// Tools Config
+// ============================================
+
+export const WebSearchConfigSchema = z.object({
+  apiKey: z.string().default(''),
+  maxResults: z.number().default(5),
+});
+
+export const ToolsConfigSchema = z.object({
+  web: z.object({
+    search: WebSearchConfigSchema.default({}),
+  }).default({}),
+});
+
+// ============================================
+// Gateway Config
 // ============================================
 
 export const GatewayAuthSchema = z.object({
   mode: z.enum(['none', 'token']).default('token'),
   token: z.string().optional(),
-}).default({
-  mode: 'token',
-});
-
-// ============================================
-// Gateway Configuration
-// ============================================
-
-export const HeartbeatConfigSchema = z.object({
-  enabled: z.boolean(),
-  intervalMs: z.number(),
-}).default({
-  enabled: true,
-  intervalMs: 60000,
 });
 
 export const GatewayConfigSchema = z.object({
-  host: z.string().optional(),
-  port: z.number().optional(),
-  auth: GatewayAuthSchema.optional(),
-  heartbeat: HeartbeatConfigSchema.optional(),
-  maxSseConnections: z.number().optional(),
-  corsOrigins: z.array(z.string()).optional(),
-}).default({
-  host: '0.0.0.0',
-  port: 18790,
-  auth: {
-    mode: 'token',
-  },
-  heartbeat: {
-    enabled: true,
-    intervalMs: 60000,
-  },
-  maxSseConnections: 100,
-  corsOrigins: ['*'],
+  host: z.string().default('0.0.0.0'),
+  port: z.number().default(18790),
+  auth: GatewayAuthSchema.default({}),
+  heartbeat: z.object({
+    enabled: z.boolean().default(true),
+    intervalMs: z.number().default(60000),
+  }).default({}),
+  maxSseConnections: z.number().default(100),
+  corsOrigins: z.array(z.string()).default(['*']),
 });
+
+// ============================================
+// Other Configs
+// ============================================
 
 export const CronConfigSchema = z.object({
-  enabled: z.boolean().optional(),
-  maxConcurrentJobs: z.number().optional(),
-  defaultTimezone: z.string().optional(),
-  historyRetentionDays: z.number().optional(),
-  enableMetrics: z.boolean().optional(),
-}).default({
-  enabled: true,
-  maxConcurrentJobs: 5,
-  defaultTimezone: 'UTC',
-  historyRetentionDays: 7,
-  enableMetrics: true,
+  enabled: z.boolean().default(true),
+  maxConcurrentJobs: z.number().default(5),
+  defaultTimezone: z.string().default('UTC'),
+  historyRetentionDays: z.number().default(7),
+  enableMetrics: z.boolean().default(true),
 });
 
-// Models.dev configuration
 export const ModelsDevConfigSchema = z.object({
   enabled: z.boolean().default(true),
-}).default({
-  enabled: true,
 });
 
-// ============================================
-// Plugin Configs
-// ============================================
-
-/**
- * Plugin configuration format:
- * {
- *   "plugins": {
- *     "enabled": ["plugin-a", "plugin-b"],
- *     "disabled": ["plugin-c"],
- *     "plugin-a": { "key": "value" },
- *     "plugin-b": true
- *   }
- * }
- */
 export const PluginsConfigSchema = z.record(
   z.string(),
-  z.union([
-    z.boolean(),
-    z.array(z.string()),
-    z.record(z.string(), z.unknown())
-  ])
+  z.union([z.boolean(), z.array(z.string()), z.record(z.string(), z.unknown())])
 ).default({});
 
 // ============================================
-// Root Config
+// Root Config (OpenClaw-Style)
 // ============================================
 
 export const ConfigSchema = z.object({
-  agents: AgentsConfigSchema,
-  channels: ChannelsConfigSchema,
-  providers: ProvidersConfigSchema,
-  gateway: GatewayConfigSchema,
-  tools: ToolsConfigSchema,
-  cron: CronConfigSchema,
+  agents: AgentsConfigSchema.default({}),
+  channels: ChannelsConfigSchema.default({}),
+  // OpenClaw-style models configuration
+  models: ModelsConfigSchema.default({}),
+  gateway: GatewayConfigSchema.default({}),
+  tools: ToolsConfigSchema.default({}),
+  cron: CronConfigSchema.default({}),
   plugins: PluginsConfigSchema,
-  modelsDev: ModelsDevConfigSchema,
-}).default({
-  agents: {
-    defaults: {
-      workspace: '~/.xopcbot/workspace',
-      model: 'anthropic/claude-sonnet-4-5',
-      maxTokens: 8192,
-      temperature: 0.7,
-      maxToolIterations: 20,
-      compaction: {
-        enabled: true,
-        mode: 'default',
-        reserveTokens: 8000,
-        triggerThreshold: 0.8,
-        minMessagesBeforeCompact: 10,
-        keepRecentMessages: 5,
-      },
-      pruning: {
-        enabled: true,
-        maxToolResultChars: 10000,
-        headKeepRatio: 0.3,
-        tailKeepRatio: 0.3,
-      },
-    },
-  },
-  channels: {
-    telegram: {
-      enabled: false,
-      token: '',
-      allowFrom: [],
-      debug: false,
-      dmPolicy: 'pairing' as const,
-      groupPolicy: 'open' as const,
-    },
-    whatsapp: {
-      enabled: false,
-      bridgeUrl: 'ws://localhost:3001',
-      allowFrom: [],
-    },
-  },
-  providers: {
-    openai: { apiKey: '' },
-    qwen: { apiKey: '' },
-    kimi: { apiKey: '' },
-    moonshot: { apiKey: '' },
-    minimax: { apiKey: '' },
-    'minimax-cn': { apiKey: '' },
-    zhipu: { apiKey: '' },
-    'zhipu-cn': { apiKey: '' },
-    deepseek: { apiKey: '' },
-    groq: { apiKey: '' },
-    openrouter: { apiKey: '' },
-    xai: { apiKey: '' },
-    bedrock: { apiKey: '' },
-    bailian: { apiKey: '' },
-    anthropic: { apiKey: '' },
-    google: { apiKey: '' },
-    ollama: {
-      enabled: true,
-      baseUrl: 'http://127.0.0.1:11434/v1',
-      autoDiscovery: true,
-    },
-  },
-  gateway: {
-    host: '0.0.0.0',
-    port: 18790,
-    heartbeat: {
-      enabled: true,
-      intervalMs: 60000,
-    },
-    maxSseConnections: 100,
-    corsOrigins: ['*'],
-  },
-  tools: {
-    web: {
-      search: {
-        apiKey: '',
-        maxResults: 5,
-      },
-    },
-  },
-  cron: {
-    enabled: true,
-    maxConcurrentJobs: 5,
-    defaultTimezone: 'UTC',
-    historyRetentionDays: 7,
-    enableMetrics: true,
-  },
-  plugins: {},
-  modelsDev: {
-    enabled: true,
-  },
+  modelsDev: ModelsDevConfigSchema.default({}),
 });
+
+// ============================================
+// Type Exports
+// ============================================
 
 export type Config = z.infer<typeof ConfigSchema>;
 export type AgentDefaults = z.infer<typeof AgentDefaultsSchema>;
-export type GatewayAuthConfig = z.infer<typeof GatewayAuthSchema>;
-export type OpenAIProviderConfig = z.infer<typeof OpenAIProviderSchema>;
-export type AnthropicProviderConfig = z.infer<typeof AnthropicProviderSchema>;
+export type ModelsConfig = z.infer<typeof ModelsConfigSchema>;
+export type ProviderConfig = z.infer<typeof ProviderConfigSchema>;
+export type ModelDef = z.infer<typeof ModelDefSchema>;
+export type ModelAlias = z.infer<typeof ModelAliasSchema>;
+export type ModelSelection = z.infer<typeof ModelSelectionSchema>;
 export type TelegramConfig = z.infer<typeof TelegramConfigSchema>;
 export type WhatsAppConfig = z.infer<typeof WhatsAppConfigSchema>;
-export type ModelMetadata = z.infer<typeof ModelMetadataSchema>;
-export type ModelCost = z.infer<typeof ModelCostSchema>;
 
-const OPENAI_COMPATIBLE_PROVIDERS: Record<string, { baseUrl: string; envKey: string[] }> = {
-  'openai': { baseUrl: 'https://api.openai.com/v1', envKey: ['OPENAI_API_KEY'] },
-  'qwen': { baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', envKey: ['QWEN_API_KEY', 'DASHSCOPE_API_KEY'] },
-  'bailian': { baseUrl: 'https://coding.dashscope.aliyuncs.com/v1', envKey: ['BAILIAN_API_KEY', 'DASHSCOPE_API_KEY'] },
-  'kimi': { baseUrl: 'https://api.moonshot.cn/v1', envKey: ['KIMI_API_KEY', 'MOONSHOT_API_KEY'] },
-  'moonshot': { baseUrl: 'https://api.moonshot.ai/v1', envKey: ['MOONSHOT_API_KEY'] },
-  'deepseek': { baseUrl: 'https://api.deepseek.com/v1', envKey: ['DEEPSEEK_API_KEY'] },
-  'groq': { baseUrl: 'https://api.groq.com/openai/v1', envKey: ['GROQ_API_KEY'] },
-  'openrouter': { baseUrl: 'https://openrouter.ai/api/v1', envKey: ['OPENROUTER_API_KEY'] },
-  'xai': { baseUrl: 'https://api.x.ai/v1', envKey: ['XAI_API_KEY'] },
-  'zhipu': { baseUrl: 'https://open.bigmodel.cn/api/paas/v4', envKey: ['ZHIPU_API_KEY'] },
-  'zhipu-cn': { baseUrl: 'https://open.bigmodel.cn/api/paas/v4', envKey: ['ZHIPU_CN_API_KEY', 'ZHIPU_API_KEY'] },
-  'bedrock': { baseUrl: '', envKey: ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY'] },
-};
+// ============================================
+// Environment Variable Substitution
+// ============================================
 
-const ANTHROPIC_COMPATIBLE_PROVIDERS: Record<string, { baseUrl: string; envKey: string[] }> = {
-  'minimax': { baseUrl: 'https://api.minimax.io/anthropic', envKey: ['MINIMAX_API_KEY'] },
-  'minimax-cn': { baseUrl: 'https://api.minimaxi.com/anthropic', envKey: ['MINIMAX_CN_API_KEY', 'MINIMAX_API_KEY'] },
-};
+/**
+ * Resolve environment variables in config values.
+ * Supports ${VAR_NAME} syntax.
+ */
+export function resolveEnvVars(value: string): string {
+  const match = /^\$\{([A-Z_][A-Z0-9_]*)\}$/.exec(value);
+  if (match) {
+    const envValue = process.env[match[1]];
+    if (envValue) return envValue;
+    throw new Error(`Environment variable ${match[1]} is not set`);
+  }
+  return value;
+}
 
-const NATIVE_PROVIDERS: Record<string, { envKey: string[] }> = {
-  'anthropic': { envKey: ['ANTHROPIC_API_KEY'] },
-  'google': { envKey: ['GOOGLE_API_KEY', 'GEMINI_API_KEY'] },
-};
+/**
+ * Recursively resolve environment variables in an object.
+ */
+export function resolveEnvVarsInObject<T>(obj: T): T {
+  if (typeof obj === 'string') {
+    return resolveEnvVars(obj) as unknown as T;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(resolveEnvVarsInObject) as unknown as T;
+  }
+  if (obj && typeof obj === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      result[key] = resolveEnvVarsInObject(value);
+    }
+    return result as unknown as T;
+  }
+  return obj;
+}
 
 // ============================================
 // Helper Functions
 // ============================================
-
-export function getApiKey(config: Config, provider: string): string | null {
-  const configKey = (config.providers as any)?.[provider]?.apiKey;
-  if (configKey) return configKey;
-  
-  if (ANTHROPIC_COMPATIBLE_PROVIDERS[provider]) {
-    for (const envKey of ANTHROPIC_COMPATIBLE_PROVIDERS[provider].envKey) {
-      if (process.env[envKey]) return process.env[envKey]!;
-    }
-  }
-  
-  if (OPENAI_COMPATIBLE_PROVIDERS[provider]) {
-    for (const envKey of OPENAI_COMPATIBLE_PROVIDERS[provider].envKey) {
-      if (process.env[envKey]) return process.env[envKey]!;
-    }
-  }
-  
-  if (NATIVE_PROVIDERS[provider]) {
-    for (const envKey of NATIVE_PROVIDERS[provider].envKey) {
-      if (process.env[envKey]) return process.env[envKey]!;
-    }
-  }
-  
-  return null;
-}
-
-export function getApiBase(config: Config, provider: string): string | null {
-  const configBase = (config.providers as any)?.[provider]?.baseUrl;
-  if (configBase) return configBase;
-  
-  if (ANTHROPIC_COMPATIBLE_PROVIDERS[provider]) {
-    return ANTHROPIC_COMPATIBLE_PROVIDERS[provider].baseUrl;
-  }
-  
-  if (OPENAI_COMPATIBLE_PROVIDERS[provider]) {
-    return OPENAI_COMPATIBLE_PROVIDERS[provider].baseUrl;
-  }
-  
-  return null;
-}
-
-export function isOpenAICompatible(provider: string): boolean {
-  return provider in OPENAI_COMPATIBLE_PROVIDERS;
-}
-
-export function isAnthropicCompatible(provider: string): boolean {
-  return provider in ANTHROPIC_COMPATIBLE_PROVIDERS;
-}
 
 export interface ParsedModelRef {
   provider: string;
   model: string;
 }
 
-export function parseModelId(modelId: string): ParsedModelRef {
-  // Check for provider/model format
+export function parseModelRef(modelId: string): ParsedModelRef {
   if (modelId.includes('/')) {
     const [provider, model] = modelId.split('/');
-    
-    if (provider.toLowerCase() === 'minimax-cn') {
-      return { provider: 'minimax-cn', model: model };
-    }
-    
-    return { provider: provider.toLowerCase(), model: model };
+    return { provider: provider.toLowerCase(), model };
   }
-  
-  const modelLower = modelId.toLowerCase();
-  const providerPrefix = modelLower.split('.')[0];
-  const bedrockProviders = ['anthropic', 'moonshot', 'qwen', 'minimax'];
-  
-  if (bedrockProviders.includes(providerPrefix) && modelLower.includes('.')) {
-    return { provider: providerPrefix, model: modelId };
-  }
-  
-  if (modelLower.startsWith('minimax-cn') || modelLower.startsWith('minimaxi')) {
-    return { provider: 'minimax-cn', model: modelId };
-  }
-  
-  if (modelLower.startsWith('gpt-') || modelLower.startsWith('o1') || modelLower.startsWith('o3') || modelLower.startsWith('o4')) {
-    return { provider: 'openai', model: modelId };
-  }
-  if (modelLower.startsWith('claude-') || modelLower.includes('sonnet') || modelLower.includes('haiku') || modelLower.includes('opus')) {
-    return { provider: 'anthropic', model: modelId };
-  }
-  if (modelLower.startsWith('gemini-') || modelLower.startsWith('gemma-')) {
-    return { provider: 'google', model: modelId };
-  }
-  if (modelLower.startsWith('qwen') || modelLower.startsWith('qwq')) {
-    return { provider: 'qwen', model: modelId };
-  }
-  if (modelLower.startsWith('bailian')) {
-    return { provider: 'bailian', model: modelId };
-  }
-  if (modelLower.startsWith('kimi')) {
-    return { provider: 'kimi', model: modelId };
-  }
-  if (modelLower.startsWith('moonshot')) {
-    return { provider: 'moonshot', model: modelId };
-  }
-  if (modelLower.startsWith('minimax')) {
-    return { provider: 'minimax', model: modelId };
-  }
-  if (modelLower.startsWith('deepseek') || modelLower.startsWith('r1')) {
-    return { provider: 'deepseek', model: modelId };
-  }
-  if (modelLower.startsWith('glm-') || modelLower.startsWith('glm')) {
-    return { provider: 'zhipu', model: modelId };
-  }
-  if (modelLower.startsWith('llama') || modelLower.startsWith('mixtral') || modelLower.startsWith('gemma')) {
-    return { provider: 'groq', model: modelId };
-  }
-  
-  return { provider: 'openai', model: modelId };
+  return { provider: detectProvider(modelId), model: modelId };
 }
 
-export function isProviderConfigured(config: Config, provider: string): boolean {
-  return !!getApiKey(config, provider);
-}
-
-export function listConfiguredProviders(config: Config): string[] {
-  const configured: string[] = [];
-  const allProviders = { ...OPENAI_COMPATIBLE_PROVIDERS, ...NATIVE_PROVIDERS };
-  
-  for (const provider of Object.keys(allProviders)) {
-    if (isProviderConfigured(config, provider)) {
-      configured.push(provider);
-    }
-  }
-  
-  return configured;
+function detectProvider(modelId: string): string {
+  const lower = modelId.toLowerCase();
+  if (lower.startsWith('gpt-') || lower.startsWith('o1') || lower.startsWith('o3') || lower.startsWith('o4')) return 'openai';
+  if (lower.startsWith('claude-')) return 'anthropic';
+  if (lower.startsWith('gemini-')) return 'google';
+  if (lower.startsWith('kimi')) return 'kimi';
+  if (lower.startsWith('deepseek')) return 'deepseek';
+  if (lower.startsWith('qwen')) return 'qwen';
+  if (lower.startsWith('glm')) return 'zhipu';
+  if (lower.startsWith('minimax')) return 'minimax';
+  return 'openai';
 }
 
 export function getWorkspacePath(config: Config): string {
@@ -633,90 +319,3 @@ export function getWorkspacePath(config: Config): string {
   }
   return workspace;
 }
-
-// ============================================
-// Built-in Model Catalog
-// ============================================
-
-export interface BuiltinModel {
-  id: string;
-  name: string;
-  provider: string;
-}
-
-export const BUILTIN_MODELS: BuiltinModel[] = [
-  { id: 'openai/gpt-4o', name: 'GPT-4o', provider: 'openai' },
-  { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', provider: 'openai' },
-  { id: 'openai/gpt-4.1', name: 'GPT-4.1', provider: 'openai' },
-  { id: 'openai/gpt-5', name: 'GPT-5', provider: 'openai' },
-  { id: 'openai/o1', name: 'o1', provider: 'openai' },
-  { id: 'openai/o3', name: 'o3', provider: 'openai' },
-  { id: 'anthropic/claude-sonnet-4-5', name: 'Claude Sonnet 4.5', provider: 'anthropic' },
-  { id: 'anthropic/claude-haiku-4-5', name: 'Claude Haiku 4.5', provider: 'anthropic' },
-  { id: 'anthropic/claude-opus-4-5', name: 'Claude Opus 4.5', provider: 'anthropic' },
-  { id: 'google/gemini-2.5-pro', name: 'Gemini 2.5 Pro', provider: 'google' },
-  { id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash', provider: 'google' },
-  { id: 'qwen/qwen-plus', name: 'Qwen Plus', provider: 'qwen' },
-  { id: 'qwen/qwen-max', name: 'Qwen Max', provider: 'qwen' },
-  { id: 'qwen/qwen3-235b', name: 'Qwen3 235B', provider: 'qwen' },
-  { id: 'kimi/kimi-k2.5', name: 'Kimi K2.5', provider: 'kimi' },
-  { id: 'kimi/kimi-k2-thinking', name: 'Kimi K2 Thinking', provider: 'kimi' },
-  { id: 'minimax/minimax-m2.5', name: 'MiniMax M2.5', provider: 'minimax' },
-  { id: 'minimax/minimax-m2.1', name: 'MiniMax M2.1', provider: 'minimax' },
-  { id: 'minimax/minimax-m2', name: 'MiniMax M2', provider: 'minimax' },
-  { id: 'zhipu/glm-4', name: 'GLM-4', provider: 'zhipu' },
-  { id: 'zhipu/glm-4-flash', name: 'GLM-4 Flash', provider: 'zhipu' },
-  { id: 'zhipu/glm-4-plus', name: 'GLM-4 Plus', provider: 'zhipu' },
-  { id: 'zhipu/glm-4-flashx', name: 'GLM-4 FlashX', provider: 'zhipu' },
-  { id: 'zhipu/glm-4v-flash', name: 'GLM-4V Flash', provider: 'zhipu' },
-  { id: 'zhipu/glm-5', name: 'GLM-5', provider: 'zhipu' },
-  { id: 'zhipu/glm-5-flash', name: 'GLM-5 Flash', provider: 'zhipu' },
-  { id: 'deepseek/deepseek-chat', name: 'DeepSeek Chat', provider: 'deepseek' },
-  { id: 'deepseek/deepseek-reasoner', name: 'DeepSeek Reasoner', provider: 'deepseek' },
-  { id: 'groq/llama-3.3-70b', name: 'Llama 3.3 70B', provider: 'groq' },
-  { id: 'openrouter/openai/gpt-4o', name: 'GPT-4o (OpenRouter)', provider: 'openrouter' },
-];
-
-export function listBuiltinModels(): BuiltinModel[] {
-  return BUILTIN_MODELS;
-}
-
-export const PROVIDER_NAMES: Record<string, string> = {
-  'openai': 'OpenAI',
-  'anthropic': 'Anthropic',
-  'google': 'Google',
-  'qwen': 'Qwen',
-  'bailian': 'Bailian',
-  'kimi': 'Kimi',
-  'moonshot': 'Moonshot AI',
-  'minimax': 'MiniMax',
-  'minimax-cn': 'MiniMax CN',
-  'zhipu': 'Zhipu',
-  'zhipu-cn': 'Zhipu CN',
-  'deepseek': 'DeepSeek',
-  'groq': 'Groq',
-  'openrouter': 'OpenRouter',
-  'xai': 'xAI (Grok)',
-};
-
-export interface ProviderOption {
-  name: string;
-  value: string;
-  envKey: string;
-  models: string[];
-}
-
-export const PROVIDER_OPTIONS: ProviderOption[] = [
-  { name: 'OpenAI (GPT-4, o1)', value: 'openai', envKey: 'OPENAI_API_KEY', models: ['gpt-4o', 'gpt-4o-mini', 'gpt-5', 'o1', 'o3'] },
-  { name: 'Anthropic (Claude)', value: 'anthropic', envKey: 'ANTHROPIC_API_KEY', models: ['claude-sonnet-4-5', 'claude-haiku-4-5', 'claude-opus-4-5'] },
-  { name: 'Google (Gemini)', value: 'google', envKey: 'GOOGLE_API_KEY', models: ['gemini-2.5-pro', 'gemini-2.5-flash'] },
-  { name: 'Qwen (通义千问)', value: 'qwen', envKey: 'QWEN_API_KEY', models: ['qwen-plus', 'qwen-max', 'qwen3-235b'] },
-  { name: 'Bailian (阿里百炼)', value: 'bailian', envKey: 'BAILIAN_API_KEY', models: ['qwen3-max-2026-01-23'] },
-  { name: 'Kimi (月之暗面)', value: 'kimi', envKey: 'KIMI_API_KEY', models: ['kimi-k2.5', 'kimi-k2-thinking'] },
-  { name: 'MiniMax (海外)', value: 'minimax', envKey: 'MINIMAX_API_KEY', models: ['minimax-m2.1', 'minimax-m2'] },
-  { name: 'MiniMax CN (国内)', value: 'minimax-cn', envKey: 'MINIMAX_CN_API_KEY', models: ['minimax-m2.1', 'minimax-m2'] },
-  { name: 'Zhipu (智谱 GLM)', value: 'zhipu', envKey: 'ZHIPU_API_KEY', models: ['glm-4', 'glm-4-flash', 'glm-4-plus', 'glm-5', 'glm-5-flash'] },
-  { name: 'Zhipu CN (国内)', value: 'zhipu-cn', envKey: 'ZHIPU_CN_API_KEY', models: ['glm-4', 'glm-4-flash', 'glm-4-plus', 'glm-5', 'glm-5-flash'] },
-  { name: 'DeepSeek', value: 'deepseek', envKey: 'DEEPSEEK_API_KEY', models: ['deepseek-chat', 'deepseek-reasoner'] },
-  { name: 'Groq', value: 'groq', envKey: 'GROQ_API_KEY', models: ['llama-3.3-70b'] },
-];

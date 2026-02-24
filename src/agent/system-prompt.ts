@@ -172,7 +172,8 @@ ${truncated}
 function buildHeartbeatSection(
   bootstrapFiles: WorkspaceBootstrapFile[],
   enabled: boolean,
-  customPrompt?: string
+  customPrompt?: string,
+  userTimezone?: string
 ): string {
   if (!enabled) {
     return '';
@@ -189,23 +190,32 @@ ${customPrompt}
   // Try to load from HEARTBEAT.md
   const heartbeatFile = bootstrapFiles.find(f => f.name === DEFAULT_HEARTBEAT_FILENAME);
   if (!heartbeatFile || heartbeatFile.missing || !heartbeatFile.content) {
-    // Default heartbeat behavior
+    // Default heartbeat behavior with timezone-aware quiet hours
+    let quietHoursNote = '';
+    if (userTimezone) {
+      quietHoursNote = `\n\n> 💤 Quiet hours: The user is in **${userTimezone}**. Avoid proactive checks during late night (23:00-08:00) unless urgent.`;
+    }
     return `## Heartbeat
 
 Poll for tasks. If nothing needs attention, reply: HEARTBEAT_OK
 
-_Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats._
+_Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats._${quietHoursNote}
 `;
   }
 
   const content = stripFrontMatter(heartbeatFile.content);
   const truncated = truncateForPrompt(content, PROMPT_MAX_CHARS.HEARTBEAT);
 
+  let quietHoursNote = '';
+  if (userTimezone) {
+    quietHoursNote = `\n\n> 💤 Quiet hours: The user is in **${userTimezone}**. Avoid proactive checks during late night (23:00-08:00) unless urgent.`;
+  }
+
   return `## HEARTBEAT.md - Task Checklist
 
 ${truncated}
 
-_Read HEARTBEAT.md for current tasks. If nothing needs attention, reply: HEARTBEAT_OK_
+_Read HEARTBEAT.md for current tasks. If nothing needs attention, reply: HEARTBEAT_OK_${quietHoursNote}
 `;
 }
 
@@ -411,7 +421,7 @@ export function buildSystemPrompt(
   sections.push(buildSkillsSection(availableTools));
 
   // 6. Heartbeat
-  sections.push(buildHeartbeatSection(bootstrapFiles, heartbeatEnabled, heartbeatPrompt));
+  sections.push(buildHeartbeatSection(bootstrapFiles, heartbeatEnabled, heartbeatPrompt, userTimezone));
 
   // 7. Working directory
   sections.push(buildWorkingDirSection(workspaceDir));

@@ -799,14 +799,30 @@ export class AgentService {
   }
 
   private getSystemPrompt(): string {
+    // Get heartbeat config from gateway config
+    const gatewayConfig = this.config.config?.gateway;
+    const heartbeatEnabled = gatewayConfig?.heartbeat?.enabled ?? false;
+    
+    // Extract timezone from USER.md for quiet hours display
+    const userFile = this.bootstrapFiles.find(f => f.name === 'USER.md');
+    let userTimezone: string | undefined;
+    if (userFile && !userFile.missing && userFile.content) {
+      // Try to extract timezone from USER.md content
+      const tzMatch = userFile.content.match(/Timezone:\s*(.+)/i);
+      if (tzMatch) {
+        userTimezone = tzMatch[1].trim();
+      }
+    }
+
     // Use the new OpenClaw-style system prompt builder
     // Cast BootstrapFile[] to WorkspaceBootstrapFile[] for compatibility
     const prompt = buildSystemPrompt(
       this.config.workspace,
       {
         bootstrapFiles: this.bootstrapFiles as any,
-        heartbeatEnabled: false, // Can be enabled via config
+        heartbeatEnabled,
         availableTools: this.skills.map(s => s.name),
+        userTimezone,
       }
     );
     return this.skillPrompt ? prompt + '\n\n' + this.skillPrompt : prompt;

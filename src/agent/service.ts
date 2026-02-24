@@ -36,6 +36,7 @@ import { createLogger } from '../utils/logger.js';
 import { PluginRegistry, HookRunner, createHookContext } from '../plugins/index.js';
 import type { CommandContext } from '../plugins/types.js';
 import { PromptBuilder } from './prompt/index.js';
+import { buildSystemPrompt } from './system-prompt.js';
 import { createTypingController } from './typing.js';
 import { loadBootstrapFiles, extractTextContent, type BootstrapFile } from './helpers.js';
 import { SessionTracker } from './session-tracker.js';
@@ -799,9 +800,15 @@ export class AgentService {
   }
 
   private getSystemPrompt(): string {
-    const prompt = PromptBuilder.createFullPrompt(
-      { workspaceDir: this.config.workspace },
-      { heartbeatEnabled: false, contextFiles: this.bootstrapFiles }
+    // Use the new OpenClaw-style system prompt builder
+    // Cast BootstrapFile[] to WorkspaceBootstrapFile[] for compatibility
+    const prompt = buildSystemPrompt(
+      this.config.workspace,
+      {
+        bootstrapFiles: this.bootstrapFiles as any,
+        heartbeatEnabled: false, // Can be enabled via config
+        availableTools: this.skills.map(s => s.name),
+      }
     );
     return this.skillPrompt ? prompt + '\n\n' + this.skillPrompt : prompt;
   }

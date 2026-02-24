@@ -8,6 +8,20 @@ import { loadAllTemplates } from '../templates.js';
 import type { CLIContext } from '../registry.js';
 import { AuthStorage, anthropicOAuthProvider, minimaxOAuthProvider, kimiOAuthProvider, githubCopilotOAuthProvider, googleGeminiCliOAuthProvider, googleAntigravityOAuthProvider, openaiCodexOAuthProvider, type OAuthLoginCallbacks } from '../../auth/index.js';
 import { upsertAuthProfile, listProfilesForProvider } from '../../auth/profiles/index.js';
+
+/**
+ * Strip YAML front matter from markdown content.
+ */
+function stripFrontMatter(content: string): string {
+  if (!content.startsWith('---')) {
+    return content;
+  }
+  const endIndex = content.indexOf('\n---', 3);
+  if (endIndex === -1) {
+    return content;
+  }
+  return content.slice(endIndex + 4).replace(/^\s+/, '');
+}
 import { ModelRegistry } from '../../providers/index.js';
 import { colors } from '../utils/colors.js';
 import { homedir } from 'os';
@@ -64,7 +78,9 @@ function setupWorkspace(workspacePath: string): void {
   for (const [filename, content] of Object.entries(templates)) {
     const filePath = join(workspacePath, filename);
     if (!existsSync(filePath)) {
-      writeFileSync(filePath, content, 'utf-8');
+      // Strip YAML front matter before writing to workspace
+      const cleanContent = stripFrontMatter(content);
+      writeFileSync(filePath, cleanContent, 'utf-8');
       console.log('✅ Created', filename);
     }
   }

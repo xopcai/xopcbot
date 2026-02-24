@@ -35,7 +35,6 @@ import { getBundledSkillsDir } from '../config/paths.js';
 import { createLogger } from '../utils/logger.js';
 import { PluginRegistry, HookRunner, createHookContext } from '../plugins/index.js';
 import type { CommandContext } from '../plugins/types.js';
-import { PromptBuilder } from './prompt/index.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import { createTypingController } from './typing.js';
 import { loadBootstrapFiles, extractTextContent, type BootstrapFile } from './helpers.js';

@@ -292,11 +292,15 @@ export function getProviderDisplayName(providerId: string): string {
     openrouter: 'OpenRouter',
     cohere: 'Cohere',
     qwen: 'Qwen (通义千问)',
+    'qwen-cn': 'Qwen CN (通义千问国内版)',
     kimi: 'Kimi (月之暗面)',
+    'kimi-cn': 'Kimi CN (国内版)',
     zai: 'Z.AI (智谱)',
     minimax: 'MiniMax',
-    'minimax-cn': 'MiniMax CN',
+    'minimax-cn': 'MiniMax CN (国内版)',
     deepseek: 'DeepSeek',
+    glm: 'Zhipu AI (智谱/GLM)',
+    stepfun: 'StepFun (阶跃星辰)',
     ollama: 'Ollama',
   };
 
@@ -310,6 +314,7 @@ export function providerSupportsOAuth(providerId: string): boolean {
   const oauthProviders = [
     'anthropic',
     'kimi',
+    'kimi-cn',
     'minimax',
     'minimax-cn',
     'zai',

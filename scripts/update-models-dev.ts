@@ -24,25 +24,43 @@ const OUTPUT_FILE = join(ROOT_DIR, 'src', 'services', 'models-dev-data.json');
 const API_URL = 'https://models.dev/api.json';
 
 // Default providers to include (popular/well-maintained)
+// Includes international and Chinese domestic versions
 const DEFAULT_PROVIDERS = [
+  // International
   'openai',
   'anthropic',
   'google',
   'xai',
-  'alibaba',      // Qwen
-  'moonshotai',   // Kimi
-  'deepseek',
   'groq',
-  'minimax',
   'openrouter',
   'ollama',
+  // Alibaba (Qwen) - International & Domestic
+  'alibaba',        // International
+  'alibaba-cn',     // 国内版 (dashscope.aliyun.cn)
+  // Kimi - International & Domestic
+  'moonshotai',     // kimi.moonshot.cn
+  'moonshotai-cn',  // kimi-cn.moonshot.cn (国内版)
+  // MiniMax - International & Domestic
+  'minimax',        // api.minimax.chat
+  'minimax-cn',     // 国内版
+  // Zhipu AI (GLM/智谱)
+  'zhipuai',        // open.bigmodel.cn
+  // DeepSeek
+  'deepseek',
+  // StepFun (阶跃星辰)
+  'stepfun',
 ];
 
 // Provider metadata overrides (API data might be incomplete)
 const PROVIDER_METADATA: Record<string, { name?: string; npm?: string }> = {
-  alibaba: { name: 'Alibaba Cloud (Qwen)', npm: 'openai' },
-  moonshotai: { name: 'Moonshot AI (Kimi)', npm: 'openai' },
-  minimax: { name: 'MiniMax', npm: 'openai' },
+  'alibaba': { name: 'Alibaba Cloud (Qwen)', npm: 'openai' },
+  'alibaba-cn': { name: 'Alibaba Cloud CN (通义千问国内版)', npm: 'openai' },
+  'moonshotai': { name: 'Moonshot AI (Kimi)', npm: 'openai' },
+  'moonshotai-cn': { name: 'Moonshot AI China (Kimi 国内版)', npm: 'openai' },
+  'minimax': { name: 'MiniMax International', npm: 'openai' },
+  'minimax-cn': { name: 'MiniMax China (国内版)', npm: 'openai' },
+  'zhipuai': { name: 'Zhipu AI (智谱/GLM)', npm: 'openai' },
+  'stepfun': { name: 'StepFun (阶跃星辰)', npm: 'openai' },
 };
 
 interface RawModel {

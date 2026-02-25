@@ -50,12 +50,15 @@ const PROVIDER_ID_MAP: ProviderIdMap = {
   cohere: 'cohere',
   // Chinese providers
   alibaba: 'qwen',
+  'alibaba-cn': 'qwen-cn',
   moonshotai: 'kimi',
-  'moonshotai-cn': 'kimi',
+  'moonshotai-cn': 'kimi-cn',
   zai: 'zai',
   minimax: 'minimax',
   'minimax-cn': 'minimax-cn',
   deepseek: 'deepseek',
+  zhipuai: 'glm',
+  stepfun: 'stepfun',
   // Others
   ollama: 'ollama',
   ollama_cloud: 'ollama',
@@ -72,6 +75,7 @@ const OAUTH_PROVIDERS: Record<string, { type: 'oauth'; oauthProviderId: string }
   {
     anthropic: { type: 'oauth', oauthProviderId: 'anthropic' },
     kimi: { type: 'oauth', oauthProviderId: 'kimi-coding' },
+    'kimi-cn': { type: 'oauth', oauthProviderId: 'kimi-coding' }, // Same as international
     minimax: { type: 'oauth', oauthProviderId: 'minimax-portal' },
     'minimax-cn': { type: 'oauth', oauthProviderId: 'minimax-cn' },
     zai: { type: 'oauth', oauthProviderId: 'zai' },

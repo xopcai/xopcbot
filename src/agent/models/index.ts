@@ -19,7 +19,8 @@ export {
   type ThinkLevel,
 } from './selection.js';
 export {
-  resolveFallbackCandidates,
+  getFallbackCandidates,
+  selectFallback,
   type FallbackCandidate,
   type FallbackOptions,
 } from './fallback.js';
@@ -31,7 +32,7 @@ export {
   type CompatFlags,
 } from './compat.js';
 export {
-  scanProviderModels,
-  scanAllProviders,
+  scanProviders,
+  scanProvider,
   type ScanResult,
 } from './scan.js';

@@ -25,8 +25,9 @@ export {
 } from './fallback.js';
 export {
   getCompatFlags,
-  mergeCompatFlags,
-  supportsFeature,
+  modelSupports,
+  modelSupportsReasoning,
+  modelSupportsVision,
   type CompatFlags,
 } from './compat.js';
 export {

@@ -1,8 +1,11 @@
 /**
  * Models.dev Service
  *
- * Fetches and caches AI model data from models.dev API.
- * Provides unified access to 97+ providers and their models.
+ * Provides AI model data from built-in static data with optional
+ * network refresh from models.dev API.
+ *
+ * Built-in data serves as the primary source for reliability,
+ * with network fetch as an optional enhancement.
  *
  * @see https://models.dev
  */
@@ -23,6 +26,7 @@ import type {
   ModelFilterOptions,
   ModelSortOptions,
 } from '../types/models-dev.js';
+import { BUILT_IN_PROVIDERS, BUILT_IN_METADATA } from './models-dev-data.js';
 
 // ============================================
 // Constants
@@ -82,6 +86,7 @@ export class ModelsDevService {
   private cacheFilePath: string;
   private config: ModelsDevServiceConfig;
   private fetchPromise: Promise<void> | null = null;
+  private initialized = false;
 
   // In-memory indexes for fast lookup
   private providerMap = new Map<string, ModelsDevProvider>();
@@ -115,30 +120,33 @@ export class ModelsDevService {
   }
 
   /**
-   * Check if data is loaded and cache is valid
+   * Check if data is loaded
    */
   isReady(): boolean {
-    if (!this.cache) return false;
-    return !this.isCacheExpired();
+    return this.initialized;
   }
 
   /**
-   * Initialize service - load from cache or fetch from API
+   * Initialize service - load from built-in data first,
+   * then try to update from network cache if available and fresh
    */
   async initialize(): Promise<boolean> {
     if (!this.config.enabled) return false;
 
     try {
-      // Try to load from cache first
-      const cached = await this.loadFromCache();
-      if (cached) {
-        this.cache = cached;
-        this.buildIndexes();
-        return true;
-      }
+      // Always start with built-in data for immediate availability
+      this.loadBuiltInData();
+      this.initialized = true;
 
-      // Fetch from API
-      await this.fetchFromApi();
+      console.log(
+        `[ModelsDev] Loaded ${BUILT_IN_METADATA.totalProviders} providers, ${BUILT_IN_METADATA.totalModels} models from built-in data`
+      );
+
+      // Try to update from file cache if it's fresh (async, don't block)
+      this.tryUpdateFromCache().catch(() => {
+        // Silent fail - built-in data is already loaded
+      });
+
       return true;
     } catch (error) {
       console.warn('[ModelsDev] Failed to initialize:', error);
@@ -147,13 +155,18 @@ export class ModelsDevService {
   }
 
   /**
-   * Force refresh from API
+   * Force refresh from API - fetches latest data from models.dev
    */
-  async refresh(): Promise<void> {
-    this.cache = null;
-    this.providerMap.clear();
-    this.modelMap.clear();
-    await this.fetchFromApi();
+  async refresh(): Promise<boolean> {
+    if (!this.config.enabled) return false;
+
+    try {
+      await this.fetchFromApi();
+      return true;
+    } catch (error) {
+      console.warn('[ModelsDev] Failed to refresh from API:', error);
+      return false;
+    }
   }
 
   /**
@@ -268,7 +281,7 @@ export class ModelsDevService {
    * Get last updated timestamp
    */
   getLastUpdated(): Date | null {
-    return this.cache ? new Date(this.cache.timestamp) : null;
+    return this.cache ? new Date(this.cache.timestamp) : new Date(BUILT_IN_METADATA.lastUpdated);
   }
 
   /**
@@ -279,9 +292,82 @@ export class ModelsDevService {
     return Date.now() - this.cache.timestamp;
   }
 
+  /**
+   * Get built-in metadata
+   */
+  getBuiltInMetadata(): typeof BUILT_IN_METADATA {
+    return BUILT_IN_METADATA;
+  }
+
   // ============================================
   // Private Methods
   // ============================================
+
+  /**
+   * Load built-in data as primary source
+   */
+  private loadBuiltInData(): void {
+    // Apply filters to built-in data
+    const filteredProviders = BUILT_IN_PROVIDERS.filter((p) => {
+      if (this.config.excludeProviders?.includes(p.id)) return false;
+      if (
+        this.config.includeProviders?.length &&
+        !this.config.includeProviders.includes(p.id)
+      ) {
+        return false;
+      }
+      return true;
+    });
+
+    this.cache = {
+      data: filteredProviders,
+      timestamp: new Date(BUILT_IN_METADATA.lastUpdated).getTime(),
+      source: 'built-in',
+    };
+
+    this.buildIndexes();
+  }
+
+  /**
+   * Try to update from file cache if available and fresh
+   */
+  private async tryUpdateFromCache(): Promise<void> {
+    try {
+      const cached = await this.loadFromFileCache();
+      if (cached && !this.isCacheExpired(cached.timestamp)) {
+        // Merge: built-in data takes precedence, but add new models from cache
+        this.mergeWithCache(cached);
+        console.log('[ModelsDev] Updated from file cache');
+      }
+    } catch {
+      // Silent fail - built-in data is sufficient
+    }
+  }
+
+  /**
+   * Merge cached data with built-in data
+   * Built-in data takes precedence for existing models
+   * Cached data adds new providers/models not in built-in
+   */
+  private mergeWithCache(cached: ModelsDevCacheEntry): void {
+    if (!this.cache) return;
+
+    const builtInProviderIds = new Set(this.cache.data.map((p) => p.id));
+
+    // Add new providers from cache that aren't in built-in
+    for (const cachedProvider of cached.data) {
+      if (!builtInProviderIds.has(cachedProvider.id)) {
+        this.cache.data.push(cachedProvider);
+      }
+    }
+
+    // Update timestamp to cache time
+    this.cache.timestamp = cached.timestamp;
+    this.cache.etag = cached.etag;
+
+    // Rebuild indexes
+    this.buildIndexes();
+  }
 
   private async fetchFromApi(): Promise<void> {
     // Prevent concurrent fetches
@@ -314,21 +400,47 @@ export class ModelsDevService {
 
     // Process and cache
     const providers = this.processApiResponse(data);
+
+    // Merge with built-in: API data adds new providers, built-in keeps existing
+    const mergedProviders = this.mergeWithApiData(providers);
+
     this.cache = {
-      data: providers,
+      data: mergedProviders,
       timestamp: Date.now(),
       etag: response.headers.get('etag') ?? undefined,
+      source: 'api',
     };
 
     // Build indexes
     this.buildIndexes();
 
     // Save to file cache
-    await this.saveToCache();
+    await this.saveToFileCache();
 
     console.log(
-      `[ModelsDev] Loaded ${providers.length} providers, ${this.modelMap.size} models`
+      `[ModelsDev] Loaded ${providers.length} providers from API, ${this.modelMap.size} total models`
     );
+  }
+
+  /**
+   * Merge API data with built-in data
+   * API data adds new providers not in built-in
+   * Built-in data takes precedence for existing providers
+   */
+  private mergeWithApiData(apiProviders: ModelsDevRawProvider[]): ModelsDevRawProvider[] {
+    const builtInIds = new Set(BUILT_IN_PROVIDERS.map((p) => p.id));
+
+    // Start with built-in providers
+    const merged = [...BUILT_IN_PROVIDERS];
+
+    // Add new providers from API
+    for (const apiProvider of apiProviders) {
+      if (!builtInIds.has(apiProvider.id)) {
+        merged.push(apiProvider);
+      }
+    }
+
+    return merged;
   }
 
   private processApiResponse(data: ModelsDevApiResponse): ModelsDevRawProvider[] {
@@ -540,10 +652,10 @@ export class ModelsDevService {
   }
 
   // ============================================
-  // Cache Management
+  // File Cache Management
   // ============================================
 
-  private async loadFromCache(): Promise<ModelsDevCacheEntry | null> {
+  private async loadFromFileCache(): Promise<ModelsDevCacheEntry | null> {
     try {
       await access(this.cacheFilePath);
       const data = await readFile(this.cacheFilePath, 'utf-8');
@@ -555,20 +667,13 @@ export class ModelsDevService {
         return null;
       }
 
-      // Check if cache is expired
-      if (this.isCacheExpired(cache.timestamp)) {
-        console.log('[ModelsDev] Cache expired');
-        return null;
-      }
-
-      console.log('[ModelsDev] Loaded from cache');
       return cache;
     } catch {
       return null;
     }
   }
 
-  private async saveToCache(): Promise<void> {
+  private async saveToFileCache(): Promise<void> {
     if (!this.cache) return;
 
     try {
@@ -582,7 +687,7 @@ export class ModelsDevService {
         'utf-8'
       );
 
-      console.log('[ModelsDev] Saved to cache');
+      console.log('[ModelsDev] Saved to file cache');
     } catch (error) {
       console.warn('[ModelsDev] Failed to save cache:', error);
     }

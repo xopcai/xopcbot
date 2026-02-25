@@ -227,6 +227,8 @@ export interface ModelsDevCacheEntry {
   data: ModelsDevRawProvider[];
   timestamp: number;
   etag?: string;
+  /** Source of the data */
+  source?: 'built-in' | 'cache' | 'api';
 }
 
 /**

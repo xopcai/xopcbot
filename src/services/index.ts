@@ -2,9 +2,5 @@ export {
   ModelsDevService,
   getModelsDevService,
   resetModelsDevService,
+  getBuiltInMetadata,
 } from './models-dev.js';
-
-export {
-  BUILT_IN_PROVIDERS,
-  BUILT_IN_METADATA,
-} from './models-dev-data.js';

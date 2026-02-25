@@ -16,7 +16,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc && cd ui && npm run build",
+    "build": "tsc && cp src/services/models-dev-data.json dist/services/ && cd ui && npm run build",
     "dev": "tsx src/cli/index.ts",
     "start": "node dist/cli/index.js",
     "test": "vitest run src",
@@ -26,6 +26,8 @@
     "skills:test": "tsx src/cli/index.ts skills test",
     "skills:validate": "tsx src/cli/index.ts skills test validate",
     "skills:security": "tsx src/cli/index.ts skills test security",
+    "update-models": "tsx scripts/update-models-dev.ts",
+    "update-models:all": "tsx scripts/update-models-dev.ts --all",
     "lint": "eslint 'src/**/*.ts' --ignore-pattern '**/examples/**'",
     "prepublishOnly": "npm test && npm run test:skills:all && npm run build",
     "docs:dev": "vitepress dev docs",

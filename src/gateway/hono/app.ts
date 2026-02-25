@@ -13,6 +13,8 @@ import { queryLogs, getLogFiles, getLogLevels, getLogStats, getLogModules, LOG_D
 import type { LogLevel } from '../../utils/logger.types.js';
 import { isProviderConfigured } from '../../agent/fallback/index.js';
 import { getModels as getPiAiModels, getProviders as getPiAiProviders } from '@mariozechner/pi-ai';
+import { ModelRegistry } from '../../providers/registry.js';
+import { getProviderDisplayName } from '../../providers/models-dev-adapter.js';
 
 const log = createLogger('HonoApp');
 
@@ -378,61 +380,142 @@ export function createHonoApp(config: HonoAppConfig): Hono {
     }
   });
 
-  // GET /api/models - Get available models (only configured providers)
-  authenticated.get('/api/models', (c) => {
+  // GET /api/models - Get available models with Models.dev integration
+  authenticated.get('/api/models', async (c) => {
     const config = service.currentConfig;
-    const models: Array<{ id: string; name: string; provider: string }> = [];
 
-    // Get all providers from pi-ai
-    const piAiProviders = getPiAiProviders() as string[];
+    try {
+      // Initialize ModelRegistry with Models.dev support
+      const registry = new ModelRegistry(config, {
+        useModelsDev: config.modelsDev?.enabled ?? true,
+      });
 
-    // Add models from configured providers
-    for (const provider of piAiProviders) {
-      // Only include models from configured providers (have API key or enabled)
-      if (!isProviderConfigured(config, provider)) continue;
+      // Load models (async to include Models.dev data)
+      const allModels = await registry.getAllAsync();
 
-      const providerModels = getPiAiModels(provider as any);
-      for (const model of providerModels) {
+      // Build enhanced model list with auth status and metadata
+      const models: Array<{
+        id: string;
+        name: string;
+        provider: string;
+        providerName: string;
+        logoUrl?: string;
+        capabilities: {
+          text: boolean;
+          image: boolean;
+          reasoning: boolean;
+          toolCall: boolean;
+        };
+        limits: {
+          context: number;
+          output: number;
+        };
+        pricing?: {
+          input: number;
+          output: number;
+          cacheRead?: number;
+          cacheWrite?: number;
+        };
+        authStatus: {
+          supportedTypes: ('api_key' | 'oauth' | 'token' | 'none')[];
+          hasOAuth: boolean;
+          configured: boolean;
+        };
+        isNew?: boolean;
+        source: 'pi-ai' | 'models.dev' | 'custom';
+      }> = [];
+
+      for (const model of allModels) {
+        // Get auth status for provider
+        const authStatus = registry.getProviderAuthStatus(model.provider);
+
+        // Check if provider is configured
+        const isConfigured = await registry.hasAuthAsync(model.provider);
+
+        // Determine source
+        let source: 'pi-ai' | 'models.dev' | 'custom' = 'pi-ai';
+        if (!registry.isFromPiAi(model.provider, model.id)) {
+          source = 'models.dev';
+        }
+
         models.push({
-          id: `${provider}/${model.id}`,
-          name: model.name || model.id,
-          provider: provider,
+          id: `${model.provider}/${model.id}`,
+          name: model.name,
+          provider: model.provider,
+          providerName: getProviderDisplayName(model.provider),
+          logoUrl: `https://models.dev/logos/${model.provider}.svg`,
+          capabilities: {
+            text: model.input.includes('text'),
+            image: model.input.includes('image'),
+            reasoning: model.reasoning ?? false,
+            toolCall: ((model as unknown as Record<string, unknown>).compat as Record<string, unknown> | undefined)?.supportsToolCalling as boolean ?? true,
+          },
+          limits: {
+            context: model.contextWindow,
+            output: model.maxTokens,
+          },
+          pricing: model.cost.input > 0 ? {
+            input: model.cost.input,
+            output: model.cost.output,
+            cacheRead: model.cost.cacheRead,
+            cacheWrite: model.cost.cacheWrite,
+          } : undefined,
+          authStatus: {
+            supportedTypes: authStatus.supportedTypes,
+            hasOAuth: authStatus.hasOAuth,
+            configured: isConfigured,
+          },
+          source,
         });
       }
+
+      // Sort by provider then name
+      models.sort((a, b) => {
+        if (a.provider !== b.provider) return a.provider.localeCompare(b.provider);
+        return a.name.localeCompare(b.name);
+      });
+
+      return c.json({
+        ok: true,
+        payload: {
+          models,
+          total: models.length,
+          source: 'merged',
+          lastUpdated: registry.getLastUpdated()?.toISOString(),
+        },
+      });
+    } catch (error) {
+      log.error({ error }, 'Failed to get models');
+      return c.json({
+        ok: false,
+        error: error instanceof Error ? error.message : 'Failed to get models',
+      }, 500);
     }
+  });
 
-    // Add custom models from new models config
-    const modelProviders = config.models?.providers;
-    if (modelProviders) {
-      for (const [providerName, providerConfig] of Object.entries(modelProviders)) {
-        // Skip if already in pi-ai
-        if (piAiProviders.includes(providerName)) continue;
+  // POST /api/models/refresh - Force refresh Models.dev cache
+  authenticated.post('/api/models/refresh', async (c) => {
+    const config = service.currentConfig;
 
-        // Only include configured providers (have API key)
-        if (!providerConfig?.apiKey) continue;
+    try {
+      const registry = new ModelRegistry(config, {
+        useModelsDev: config.modelsDev?.enabled ?? true,
+      });
 
-        // Add models defined in provider config
-        if (providerConfig?.models && Array.isArray(providerConfig.models)) {
-          for (const modelConfig of providerConfig.models) {
-            const modelId = typeof modelConfig === 'string' ? modelConfig : (modelConfig as any).id;
-            const modelName = typeof modelConfig === 'string' ? modelConfig : (modelConfig as any).name || modelConfig;
-            models.push({
-              id: `${providerName}/${modelId}`,
-              name: modelName,
-              provider: providerName,
-            });
-          }
-        }
-      }
+      await registry.refreshModelsDev();
+
+      return c.json({
+        ok: true,
+        message: 'Models cache refreshed successfully',
+        lastUpdated: registry.getLastUpdated()?.toISOString(),
+      });
+    } catch (error) {
+      log.error({ error }, 'Failed to refresh models');
+      return c.json({
+        ok: false,
+        error: error instanceof Error ? error.message : 'Failed to refresh models',
+      }, 500);
     }
-
-    // Sort by provider then name
-    models.sort((a, b) => {
-      if (a.provider !== b.provider) return a.provider.localeCompare(b.provider);
-      return a.name.localeCompare(b.name);
-    });
-
-    return c.json({ ok: true, payload: { models } });
   });
 
   // ========== Cron REST API (/api/cron) ==========

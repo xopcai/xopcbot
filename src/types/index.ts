@@ -207,3 +207,6 @@ export {
 
 // Re-export provider types
 export * from './providers.js';
+
+// Export models.dev types
+export * from './models-dev.js';

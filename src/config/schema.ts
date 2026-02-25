@@ -253,8 +253,12 @@ export const CronConfigSchema = z.object({
 // Models.dev configuration
 export const ModelsDevConfigSchema = z.object({
   enabled: z.boolean().default(true),
+  cacheDurationHours: z.number().default(24),
+  excludeProviders: z.array(z.string()).optional(),
+  includeProviders: z.array(z.string()).optional(),
 }).default({
   enabled: true,
+  cacheDurationHours: 24,
 });
 
 // ============================================
@@ -362,6 +366,7 @@ export const ConfigSchema = z.object({
   plugins: {},
   modelsDev: {
     enabled: true,
+    cacheDurationHours: 24,
   },
   // models configuration
   models: {

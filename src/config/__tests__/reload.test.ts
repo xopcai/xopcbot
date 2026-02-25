@@ -92,6 +92,7 @@ describe('ConfigHotReloader', () => {
     plugins: {},
     modelsDev: {
       enabled: true,
+      cacheDurationHours: 24,
     },
   };
 

@@ -151,3 +151,27 @@ export {
 	type TaskType,
 	type ModelComparisonInfo,
 } from './model-catalog.js';
+
+// ============================================
+// Models.dev Adapter
+// ============================================
+export {
+	// Conversion functions
+	convertToPiAIModel,
+	convertRawProviderToPiAiModels,
+	convertProviderToPiAiModels,
+	mergeModels,
+	modelExistsInModelsDev,
+	
+	// Mapping
+	mapProviderId,
+	unmapProviderId,
+	PROVIDER_ID_MAP,
+	REVERSE_PROVIDER_ID_MAP,
+	
+	// Utilities
+	getProviderDisplayName,
+	providerSupportsOAuth,
+	inferAuthType,
+	getProviderEnvKeys,
+} from './models-dev-adapter.js';

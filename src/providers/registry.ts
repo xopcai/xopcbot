@@ -41,6 +41,17 @@ import {
 	modelSupportsModality,
 } from './model-catalog.js';
 
+// Import Models.dev integration
+import { ModelsDevService } from '../services/models-dev.js';
+import {
+	convertToPiAIModel,
+	mapProviderId,
+	mergeModels,
+	providerSupportsOAuth,
+	getProviderEnvKeys,
+} from './models-dev-adapter.js';
+import type { ModelsDevModel } from '../types/models-dev.js';
+
 const providerConfig = createProviderConfig();
 const OLLAMA_API_BASE = providerConfig.ollamaBaseUrl;
 const OLLAMA_TAGS_URL = `${OLLAMA_API_BASE}/api/tags`;
@@ -187,14 +198,37 @@ export class ModelRegistry {
 	private ollamaModels: Model<Api>[] = [];
 	private useAuthProfiles: boolean = true;
 
+	// Models.dev integration
+	private modelsDevService: ModelsDevService | null = null;
+	private useModelsDev: boolean = true;
+	private modelsDevInitialized: boolean = false;
+	private piAiModelIds: Set<string> = new Set(); // Track Pi-AI models for merging
+
 	constructor(
 		config?: Config | null,
-		options?: { ollamaEnabled?: boolean; ollamaDiscovery?: boolean; useAuthProfiles?: boolean }
+		options?: {
+			ollamaEnabled?: boolean;
+			ollamaDiscovery?: boolean;
+			useAuthProfiles?: boolean;
+			useModelsDev?: boolean;
+		}
 	) {
 		this.config = config ?? null;
 		this.ollamaEnabled = options?.ollamaEnabled ?? true;
 		this.ollamaDiscovery = options?.ollamaDiscovery ?? true;
 		this.useAuthProfiles = options?.useAuthProfiles ?? true;
+		this.useModelsDev = options?.useModelsDev ?? config?.modelsDev?.enabled ?? true;
+
+		// Initialize Models.dev service if enabled
+		if (this.useModelsDev) {
+			this.modelsDevService = new ModelsDevService({
+				cacheDurationMs: (config?.modelsDev?.cacheDurationHours ?? 24) * 3600 * 1000,
+				enabled: true,
+				excludeProviders: config?.modelsDev?.excludeProviders,
+				includeProviders: config?.modelsDev?.includeProviders,
+			});
+		}
+
 		this.loadModels();
 	}
 
@@ -317,6 +351,11 @@ export class ModelRegistry {
 			for (const provider of providers) {
 				const builtInModels = getModels(provider as KnownProvider) as Model<Api>[];
 				this.models.push(...builtInModels);
+
+				// Track Pi-AI models for merging with Models.dev
+				for (const model of builtInModels) {
+					this.piAiModelIds.add(`${model.provider}/${model.id}`);
+				}
 			}
 		} catch (error) {
 			console.warn('Failed to load built-in models:', error);
@@ -409,6 +448,132 @@ export class ModelRegistry {
 	/** Get all models (built-in + custom + Ollama) */
 	getAll(): Model<Api>[] {
 		return this.models;
+	}
+
+	/**
+	 * Get all models with Models.dev integration (async)
+	 * This method ensures Models.dev data is loaded and merged
+	 */
+	async getAllAsync(): Promise<Model<Api>[]> {
+		await this.ensureModelsDevInitialized();
+		return this.models;
+	}
+
+	/**
+	 * Initialize Models.dev service and merge data
+	 */
+	private async ensureModelsDevInitialized(): Promise<void> {
+		if (!this.useModelsDev || !this.modelsDevService || this.modelsDevInitialized) {
+			return;
+		}
+
+		try {
+			const success = await this.modelsDevService.initialize();
+			if (success) {
+				this.mergeModelsDevData();
+				this.modelsDevInitialized = true;
+			}
+		} catch (error) {
+			console.warn('[ModelRegistry] Failed to initialize Models.dev:', error);
+		}
+	}
+
+	/**
+	 * Merge Models.dev data with existing models
+	 * Strategy: Pi-AI models take precedence, Models.dev provides new models and updated pricing
+	 */
+	private mergeModelsDevData(): void {
+		if (!this.modelsDevService) return;
+
+		const devModels = this.modelsDevService.getAllModels();
+		let added = 0;
+		let updated = 0;
+
+		for (const devModel of devModels) {
+			const key = `${devModel.provider}/${devModel.id}`;
+			const existingIndex = this.models.findIndex(
+				(m) => m.provider === devModel.provider && m.id === devModel.id
+			);
+
+			if (existingIndex >= 0) {
+				// Update pricing from Models.dev (more current)
+				if (devModel.pricing) {
+					this.models[existingIndex].cost = {
+						input: devModel.pricing.input,
+						output: devModel.pricing.output,
+						cacheRead: devModel.pricing.cacheRead ?? this.models[existingIndex].cost.cacheRead,
+						cacheWrite: devModel.pricing.cacheWrite ?? this.models[existingIndex].cost.cacheWrite,
+					};
+					updated++;
+				}
+			} else {
+				// Add new model from Models.dev
+				try {
+					const piAiModel = convertToPiAIModel(devModel, devModel.provider, false);
+					this.models.push(piAiModel);
+					added++;
+				} catch (error) {
+					console.warn(`[ModelRegistry] Failed to convert model ${key}:`, error);
+				}
+			}
+		}
+
+		console.log(`[ModelRegistry] Models.dev merged: ${added} added, ${updated} updated`);
+	}
+
+	/**
+	 * Check if a model came from Pi-AI (has reliable API config)
+	 */
+	isFromPiAi(provider: string, modelId: string): boolean {
+		return this.piAiModelIds.has(`${provider}/${modelId}`);
+	}
+
+	/**
+	 * Get last updated timestamp from Models.dev
+	 */
+	getLastUpdated(): Date | null {
+		return this.modelsDevService?.getLastUpdated() ?? null;
+	}
+
+	/**
+	 * Force refresh from Models.dev API
+	 */
+	async refreshModelsDev(): Promise<void> {
+		if (!this.modelsDevService) {
+			throw new Error('Models.dev is not enabled');
+		}
+
+		await this.modelsDevService.refresh();
+
+		// Reset and re-merge
+		const piAiModels = this.models.filter(m => this.piAiModelIds.has(`${m.provider}/${m.id}`));
+		this.models = [...piAiModels];
+		this.mergeModelsDevData();
+	}
+
+	/**
+	 * Get provider authentication status including OAuth support
+	 */
+	getProviderAuthStatus(providerId: string): {
+		supportedTypes: ('api_key' | 'oauth' | 'token' | 'none')[];
+		hasOAuth: boolean;
+		envKeys: string[];
+	} {
+		const supportedTypes: ('api_key' | 'oauth' | 'token' | 'none')[] = [];
+		const hasOAuth = providerSupportsOAuth(providerId);
+		const envKeys = getProviderEnvKeys(providerId);
+
+		// Determine supported auth types
+		if (providerId === 'ollama') {
+			supportedTypes.push('none');
+		} else {
+			supportedTypes.push('api_key');
+			if (hasOAuth) {
+				supportedTypes.push('oauth');
+			}
+		}
+
+		return { supportedTypes, hasOAuth, envKeys };
 	}
 
 	/** Get models grouped by provider */

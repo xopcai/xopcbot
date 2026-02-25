@@ -11,6 +11,8 @@ import { getIcon } from '../utils/icons';
 import { t } from '../utils/i18n';
 import type { ProviderTemplate } from '../config/provider-templates.js';
 import { PROVIDER_TEMPLATES, getProviderTemplate } from '../config/provider-templates.js';
+import type { ModelInfo } from '../core/services/models-api.js';
+import { ModelsApi } from '../core/services/models-api.js';
 
 // Model and Provider interfaces
 export interface ModelConfig {
@@ -82,7 +84,11 @@ export class SettingsPage extends LitElement {
   @state() private _dirtyFields: Set<string> = new Set();
   @state() private _errors: Map<string, string> = new Map();
   @state() private _saveSuccess = false;
-  @state() private _models: Array<{ id: string; name: string; provider: string }> = [];
+  @state() private _models: ModelInfo[] = [];
+  @state() private _modelsLastUpdated?: string;
+  @state() private _modelsSource = 'pi-ai';
+  @state() private _refreshingModels = false;
+  private _modelsApi?: ModelsApi;
 
   // Provider and Model management
   @state() private _providers: ProviderConfig[] = [];
@@ -167,10 +173,21 @@ export class SettingsPage extends LitElement {
 
   // Settings sections definition
   private get _sections(): SettingsSection[] {
-    const modelOptions = this._models.map(m => ({
-      value: m.id,
-      label: `${m.provider}/${m.name}`,
-    }));
+    // Enhanced model options with capabilities and pricing
+    const modelOptions = this._models.map(m => {
+      const tags = this._getCapabilityTags(m);
+      const priceStr = this._formatPrice(m.pricing);
+      const authIndicator = m.authStatus.configured ? '✓ ' : '⚠ ';
+      return {
+        value: m.id,
+        label: `${authIndicator}${m.providerName} / ${m.name} ${tags.length > 0 ? `(${tags.join(', ')})` : ''} - ${priceStr}`,
+      };
+    });
+
+    // Vision models for imageModel selection
+    const visionModels = this._models.filter(m =>
+      m.capabilities.image || m.id.toLowerCase().includes('vision') || m.id.toLowerCase().includes('vl')
+    );
 
     return [
       {
@@ -182,7 +199,7 @@ export class SettingsPage extends LitElement {
             key: 'model',
             label: t('settings.fields.model'),
             type: 'select',
-            description: t('settings.descriptionsFields.model'),
+            description: this._renderModelSelectorDescription(),
             options: modelOptions,
           },
           {
@@ -192,9 +209,9 @@ export class SettingsPage extends LitElement {
             description: t('settings.descriptionsFields.imageModel'),
             options: [
               { value: '', label: 'None (use primary model)' },
-              ...this._models.filter(m => m.id.includes('vision') || m.id.includes('vl') || m.id.includes('image')).map(m => ({
+              ...visionModels.map(m => ({
                 value: m.id,
-                label: `${m.provider}/${m.name}`,
+                label: `${m.authStatus.configured ? '✓ ' : '⚠ '}${m.providerName} / ${m.name}`,
               })),
             ],
           },
@@ -673,19 +690,108 @@ export class SettingsPage extends LitElement {
     try {
       const url = window.location.origin;
       const token = this.config?.token;
-      const response = await fetch(`${url}/api/models`, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-      });
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.payload?.models) {
-          this._models = data.payload.models;
-        }
-      }
+      // Initialize ModelsApi
+      this._modelsApi = new ModelsApi(url, token);
+
+      const response = await this._modelsApi.getModels();
+      this._models = response.models;
+      this._modelsLastUpdated = response.lastUpdated;
+      this._modelsSource = response.source;
     } catch (err) {
       console.error('Failed to load models:', err);
     }
+  }
+
+  /**
+   * Refresh models from Models.dev API
+   */
+  private async _refreshModels(): Promise<void> {
+    if (!this._modelsApi) return;
+
+    this._refreshingModels = true;
+    try {
+      const result = await this._modelsApi.refreshModels();
+      // Reload models after refresh
+      await this._loadModels();
+      // Show success toast
+      this._showToast(`Models refreshed: ${result.message}`);
+    } catch (err) {
+      console.error('Failed to refresh models:', err);
+      this._showToast('Failed to refresh models', 'error');
+    } finally {
+      this._refreshingModels = false;
+    }
+  }
+
+  /**
+   * Show toast notification
+   */
+  private _showToast(message: string, type: 'success' | 'error' = 'success'): void {
+    // Simple alert for now, could be replaced with a toast component
+    if (type === 'error') {
+      alert(message);
+    } else {
+      console.log(message);
+    }
+  }
+
+  /**
+   * Format relative time
+   */
+  private _formatRelativeTime(dateStr?: string): string {
+    if (!dateStr) return 'Unknown';
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
+  }
+
+  /**
+   * Get capability tags for display
+   */
+  private _getCapabilityTags(model: ModelInfo): string[] {
+    const tags: string[] = [];
+    if (model.capabilities.image) tags.push('Vision');
+    if (model.capabilities.reasoning) tags.push('Reasoning');
+    if (model.capabilities.toolCall) tags.push('Tools');
+    if (model.isNew) tags.push('New');
+    if (model.pricing && model.pricing.input < 1) tags.push('Cheap');
+    return tags;
+  }
+
+  /**
+   * Format price for display
+   */
+  private _formatPrice(pricing?: { input: number }): string {
+    if (!pricing) return 'Price N/A';
+    if (pricing.input === 0) return 'Free';
+    return `$${pricing.input.toFixed(2)}/1M`;
+  }
+
+  /**
+   * Render model selector description with refresh button
+   */
+  private _renderModelSelectorDescription(): string {
+    const parts: string[] = [t('settings.descriptionsFields.model')];
+
+    if (this._modelsSource) {
+      parts.push(`Source: ${this._modelsSource}`);
+    }
+
+    if (this._modelsLastUpdated) {
+      parts.push(`Updated: ${this._formatRelativeTime(this._modelsLastUpdated)}`);
+    }
+
+    return parts.join(' | ');
   }
 
   private async _saveSettings(): Promise<void> {
@@ -978,6 +1084,7 @@ export class SettingsPage extends LitElement {
         <div class="section-header">
           <h2>${section.title}</h2>
           <p class="section-desc">${t(descKey)}</p>
+          ${section.id === 'agent' ? this._renderModelRefreshButton() : ''}
         </div>
 
         ${section.id === 'gateway' ? this._renderGatewaySection() : ''}
@@ -986,6 +1093,41 @@ export class SettingsPage extends LitElement {
         <div class="fields-grid">
           ${section.id !== 'providers' ? section.fields.map(field => this._renderField(field)) : ''}
         </div>
+      </div>
+    `;
+  }
+
+  /**
+   * Render model refresh button for agent section
+   */
+  private _renderModelRefreshButton(): unknown {
+    return html`
+      <div class="model-refresh-bar" style="margin-bottom: 16px; padding: 12px; background: var(--muted); border-radius: 8px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+        <div style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted-foreground);">
+          <span class="source-badge" style="padding: 2px 8px; background: var(--primary); color: white; border-radius: 4px; font-size: 11px; text-transform: uppercase;">
+            ${this._modelsSource}
+          </span>
+          ${this._modelsLastUpdated ? html`
+            <span class="last-updated">
+              Updated ${this._formatRelativeTime(this._modelsLastUpdated)}
+            </span>
+          ` : ''}
+          <span class="model-count">${this._models.length} models</span>
+        </div>
+        <button
+          class="btn btn-sm btn-secondary"
+          ?disabled=${this._refreshingModels}
+          @click=${this._refreshModels}
+          title="Refresh models from Models.dev"
+        >
+          ${this._refreshingModels ? html`
+            <span class="spinner-sm"></span>
+            Refreshing...
+          ` : html`
+            ${getIcon('refreshCw')}
+            Refresh
+          `}
+        </button>
       </div>
     `;
   }

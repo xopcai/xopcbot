@@ -509,10 +509,11 @@ const MEMORY_TRIGGERS = [
   /zapamatuj si|pamatuj|remember/i,
   /preferuji|radši|nechci|prefer/i,
   /rozhodli jsme|budeme používat/i,
+  /decided|will use|going to|i'll|i will/i,
   /\+\d{10,}/,  // Phone numbers
   /[\w.-]+@[\w.-]+\.\w+/,  // Emails
   /můj\s+\w+\s+je|je\s+můj/i,  // "my X is Y" in Czech
-  /my\s+\w+\s+is|is\s+my/i,  // "my X is Y" in English
+  /my\s+\w+\s+(is|called|name)/i,  // "my X is Y" in English
   /i (like|prefer|hate|love|want|need)/i,
   /always|never|important/i,
 ];
@@ -543,26 +544,26 @@ function looksLikePromptInjection(text: string): boolean {
 /**
  * Detect category of the memory text
  */
-function detectCategory(text: string): MemoryCategory {
+export function detectCategory(text: string): MemoryCategory {
   const lower = text.toLowerCase();
   
+  // Entity (names, contacts) - check first to prioritize specific patterns
+  if (/\+\d{10,}|@[\w.-]+\.\w+|is called|jmenuje se|call (her|him)|wife|husband|dad|mom|friend|name is/i.test(lower)) {
+    return 'entity';
+  }
+  
   // Preference
-  if (/prefer|radši|like|love|hate|want|i (like|prefer|hate|love)|don't like/i.test(lower)) {
+  if (/prefer|radši|like|love|hate|want|don't like/i.test(lower)) {
     return 'preference';
   }
   
   // Decision
-  if (/rozhodli|decided|will use|budeme|let's|i'll|i will|going to/i.test(lower)) {
+  if (/rozhodli|decided|will use|budeme|let's|i will|going to/i.test(lower)) {
     return 'decision';
   }
   
-  // Entity (names, contacts)
-  if (/\+\d{10,}|@[\w.-]+\.\w+|is called|jmenuje se|my (wife|husband|dad|mom|friend|name)/i.test(lower)) {
-    return 'entity';
-  }
-  
   // Fact
-  if (/is|are|has|have|je|má|jsou/i.test(lower)) {
+  if (/is |are |has |have |je |má |jsou/i.test(lower)) {
     return 'fact';
   }
   

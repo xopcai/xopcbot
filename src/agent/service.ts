@@ -32,6 +32,8 @@ import {
   createMemoryGetTool,
   createMemoryStoreTool,
   createMemoryForgetTool,
+  performAutoRecall,
+  isAutoRecallEnabled,
 } from './tools/index.js';
 import { createSkillLoader, type Skill } from './skills/index.js';
 import { getBundledSkillsDir } from '../config/paths.js';
@@ -572,6 +574,16 @@ export class AgentService {
 
       // Build message content with text and attachments
       const messageContent: Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }> = [];
+
+      // Auto-recall: inject relevant memories before processing
+      const memoryConfig = getMemoryBackendConfig();
+      if (isAutoRecallEnabled(memoryConfig)) {
+        const recallResult = await performAutoRecall(config.workspace, expandedContent, memoryConfig!);
+        if (recallResult) {
+          messageContent.push({ type: 'text', text: recallResult.context });
+          log.info({ count: recallResult.count }, 'Injected memories via auto-recall');
+        }
+      }
 
       // Add text content
       if (expandedContent.trim()) {

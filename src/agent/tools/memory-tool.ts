@@ -431,3 +431,71 @@ export function createMemoryForgetTool(options: MemoryToolsOptions): AgentTool<t
 export function isLanceDBConfigured(config?: MemoryBackendConfig): boolean {
   return config?.backend === 'lancedb' && !!config.lancedb?.apiKey;
 }
+
+// =============================================================================
+// Auto-Recall Functions
+// =============================================================================
+
+/**
+ * Performs auto-recall: searches memory and returns formatted context string
+ * to be injected into agent context
+ */
+export async function performAutoRecall(
+  workspaceDir: string,
+  prompt: string,
+  config: MemoryBackendConfig
+): Promise<{ context: string; count: number } | null> {
+  // Only work with LanceDB backend for auto-recall
+  if (config.backend !== 'lancedb' || !config.lancedb?.apiKey) {
+    return null;
+  }
+
+  // Check if auto-recall is enabled
+  if (!config.lancedb.autoRecall) {
+    return null;
+  }
+
+  try {
+    const backendConfig: MemoryBackendConfig = { backend: 'lancedb', lancedb: config.lancedb };
+    const backend = await getOrCreateBackend(workspaceDir, backendConfig);
+    
+    if (!backend) {
+      log.warn('Auto-recall: backend unavailable');
+      return null;
+    }
+
+    // Search with higher threshold to avoid noise
+    const results = await backend.search(prompt, { 
+      maxResults: 3, 
+      minScore: 0.4  // Higher threshold for auto-recall
+    });
+
+    if (results.length === 0) {
+      return null;
+    }
+
+    // Format as context
+    const memories = results.map((r, i) => 
+      `${i + 1}. [${r.entry.category}] ${r.entry.text}`
+    ).join('\n');
+
+    const context = `<relevant-memories>
+The following memories may be relevant to this conversation:
+${memories}
+</relevant-memories>`;
+
+    log.info({ count: results.length, scores: results.map(r => r.score) }, 'Auto-recall: injected memories');
+
+    return { context, count: results.length };
+  } catch (err) {
+    log.error({ err }, 'Auto-recall failed');
+    return null;
+  }
+}
+
+/**
+ * Check if auto-recall is enabled in config
+ */
+export function isAutoRecallEnabled(config?: MemoryBackendConfig): boolean {
+  return config?.backend === 'lancedb' && config.lancedb?.autoRecall === true;
+}

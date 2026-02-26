@@ -104,7 +104,7 @@ class KimiEmbeddingProvider implements EmbeddingProvider {
 // Vector Dimensions for Models
 // =============================================================================
 
-export function getVectorDim(provider: string, model?: string): number {
+export function getVectorDim(provider: string, _model?: string): number {
   if (provider === 'kimi') {
     // emb-text-256v1 = 2560 dimensions
     return 2560;

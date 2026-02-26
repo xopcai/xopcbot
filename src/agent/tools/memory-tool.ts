@@ -1,18 +1,91 @@
-// Memory search tools for xopcbot agent
+// Memory tools factory - creates tools based on configuration
 import { Type, type Static } from '@sinclair/typebox';
 import type { AgentTool, AgentToolResult } from '@mariozechner/pi-agent-core';
 import { memorySearch, memoryGet } from '../prompt/memory/index.js';
+import type { MemoryBackendConfig } from '../memory/types.js';
+import { createMemoryBackend, type MemoryBackend } from '../memory/lancedb.js';
+import { createLogger } from '../../utils/logger.js';
+
+const log = createLogger('memory-tools');
 
 // =============================================================================
-// Memory Search Tool
+// Backend Cache
 // =============================================================================
+
+const backendCache = new Map<string, MemoryBackend>();
+const configCache = new Map<string, MemoryBackendConfig>();
+
+function getCacheKey(workspaceDir: string, config?: MemoryBackendConfig): string {
+  return workspaceDir + (config ? JSON.stringify(config) : '');
+}
+
+async function getOrCreateBackend(workspaceDir: string, config?: MemoryBackendConfig): Promise<MemoryBackend | null> {
+  const key = getCacheKey(workspaceDir, config);
+  
+  // Check if config changed
+  const existingConfig = configCache.get(key);
+  if (existingConfig && JSON.stringify(existingConfig) !== JSON.stringify(config)) {
+    const oldBackend = backendCache.get(key);
+    if (oldBackend?.close) {
+      await oldBackend.close();
+    }
+    backendCache.delete(key);
+    configCache.delete(key);
+  }
+
+  let backend = backendCache.get(key);
+  if (!backend && config) {
+    try {
+      backend = await createMemoryBackend(config, workspaceDir);
+      backendCache.set(key, backend);
+      configCache.set(key, config);
+      log.info({ backend: config.backend }, 'Memory backend initialized');
+    } catch (err) {
+      log.error({ err }, 'Failed to create memory backend');
+      return null;
+    }
+  }
+  
+  return backend ?? null;
+}
+
+// =============================================================================
+// Schema Definitions
+// =============================================================================
+
 const MemorySearchSchema = Type.Object({
   query: Type.String(),
   maxResults: Type.Optional(Type.Number()),
   minScore: Type.Optional(Type.Number()),
 });
 
-export function createMemorySearchTool(workspaceDir: string): AgentTool<typeof MemorySearchSchema, {}> {
+const MemoryGetSchema = Type.Object({
+  path: Type.String(),
+  from: Type.Optional(Type.Number()),
+  lines: Type.Optional(Type.Number()),
+});
+
+const MemoryStoreSchema = Type.Object({
+  text: Type.String(),
+  importance: Type.Optional(Type.Number()),
+  category: Type.Optional(Type.Union([
+    Type.Literal('preference'),
+    Type.Literal('fact'),
+    Type.Literal('decision'),
+    Type.Literal('entity'),
+    Type.Literal('other'),
+  ])),
+});
+
+const MemoryForgetSchema = Type.Object({
+  memoryId: Type.String(),
+});
+
+// =============================================================================
+// Builtin Memory Tools (Fuzzy Search)
+// =============================================================================
+
+function createBuiltinMemorySearchTool(workspaceDir: string): AgentTool<typeof MemorySearchSchema, {}> {
   return {
     name: 'memory_search',
     label: '🔍 Memory Search',
@@ -24,10 +97,10 @@ export function createMemorySearchTool(workspaceDir: string): AgentTool<typeof M
       params: Static<typeof MemorySearchSchema>,
       _signal?: AbortSignal
     ): Promise<AgentToolResult<{}>> {
-      const { query, maxResults } = params;
+      const { query, maxResults = 5, minScore = 0.3 } = params;
 
       try {
-        const results = await memorySearch(workspaceDir, query, { maxResults });
+        const results = await memorySearch(workspaceDir, query, { maxResults, minScore });
         const withCitations = results.map(entry => ({
           ...entry,
           citation: `${entry.file}#L${entry.lineNumbers[0]}${entry.lineNumbers.length > 1 ? `-L${entry.lineNumbers[entry.lineNumbers.length - 1]}` : ''}`,
@@ -35,8 +108,8 @@ export function createMemorySearchTool(workspaceDir: string): AgentTool<typeof M
         }));
 
         return {
-          content: [{ type: 'text', text: JSON.stringify({ results: withCitations, provider: 'simple' }, null, 2) }],
-          details: { results: withCitations },
+          content: [{ type: 'text', text: JSON.stringify({ results: withCitations, provider: 'fuzzy' }, null, 2) }],
+          details: { results: withCitations, backend: 'builtin' },
         };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -49,16 +122,7 @@ export function createMemorySearchTool(workspaceDir: string): AgentTool<typeof M
   };
 }
 
-// =============================================================================
-// Memory Get Tool
-// =============================================================================
-const MemoryGetSchema = Type.Object({
-  path: Type.String(),
-  from: Type.Optional(Type.Number()),
-  lines: Type.Optional(Type.Number()),
-});
-
-export function createMemoryGetTool(workspaceDir: string): AgentTool<typeof MemoryGetSchema, {}> {
+function createBuiltinMemoryGetTool(workspaceDir: string): AgentTool<typeof MemoryGetSchema, {}> {
   return {
     name: 'memory_get',
     label: '📄 Memory Get',
@@ -93,4 +157,277 @@ export function createMemoryGetTool(workspaceDir: string): AgentTool<typeof Memo
       }
     },
   };
+}
+
+// =============================================================================
+// LanceDB Memory Tools (Vector Search)
+// =============================================================================
+
+function createLanceDBMemorySearchTool(workspaceDir: string, config: NonNullable<MemoryBackendConfig['lancedb']>): AgentTool<typeof MemorySearchSchema, {}> {
+  const backendConfig: MemoryBackendConfig = { backend: 'lancedb', lancedb: config };
+  
+  return {
+    name: 'memory_search',
+    label: '🔍 Memory Search',
+    description: 'Semantic vector search through long-term memories. Searches by meaning, not just keywords.',
+    parameters: MemorySearchSchema,
+
+    async execute(
+      _toolCallId: string,
+      params: Static<typeof MemorySearchSchema>,
+      _signal?: AbortSignal
+    ): Promise<AgentToolResult<{}>> {
+      const { query, maxResults = 5, minScore = 0.3 } = params;
+
+      try {
+        const backend = await getOrCreateBackend(workspaceDir, backendConfig);
+        
+        if (!backend) {
+          return {
+            content: [{ type: 'text', text: 'Memory backend unavailable. Please check configuration.' }],
+            details: { error: 'backend_unavailable', backend: 'lancedb' },
+          };
+        }
+
+        const results = await backend.search(query, { maxResults, minScore });
+        const status = backend.status();
+        
+        const withCitations = results.map((entry) => ({
+          file: entry.entry.id,
+          lines: entry.entry.text,
+          score: entry.score,
+          lineNumbers: [1],
+          category: entry.entry.category,
+          importance: entry.entry.importance,
+          citation: `[${entry.entry.category}] ${entry.entry.text.slice(0, 80)}...`,
+          snippet: `${entry.entry.text}\n\nSource: memory:${entry.entry.id}`,
+        }));
+
+        return {
+          content: [{ 
+            type: 'text', 
+            text: JSON.stringify({ 
+              results: withCitations, 
+              provider: status.provider || 'lancedb',
+              model: status.model,
+              backend: status.backend,
+            }, null, 2) 
+          }],
+          details: { results: withCitations, backend: status.backend },
+        };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return {
+          content: [{ type: 'text', text: `Search error: ${message}` }],
+          details: { error: message },
+        };
+      }
+    },
+  };
+}
+
+function createLanceDBMemoryGetTool(workspaceDir: string, config: NonNullable<MemoryBackendConfig['lancedb']>): AgentTool<typeof MemoryGetSchema, {}> {
+  const backendConfig: MemoryBackendConfig = { backend: 'lancedb', lancedb: config };
+  
+  return {
+    name: 'memory_get',
+    label: '📄 Memory Get',
+    description: 'Read a specific memory by ID (for LanceDB backend).',
+    parameters: MemoryGetSchema,
+
+    async execute(
+      _toolCallId: string,
+      params: Static<typeof MemoryGetSchema>,
+      _signal?: AbortSignal
+    ): Promise<AgentToolResult<{}>> {
+      const { path } = params; // path = memory ID for LanceDB
+
+      try {
+        const backend = await getOrCreateBackend(workspaceDir, backendConfig);
+        
+        if (!backend) {
+          return {
+            content: [{ type: 'text', text: 'Memory backend unavailable' }],
+            details: { disabled: true },
+          };
+        }
+
+        const result = await backend.readFile({ relPath: path });
+        
+        if (result.disabled || result.error) {
+          return {
+            content: [{ type: 'text', text: result.error || 'Read unavailable' }],
+            details: { path, text: '', disabled: true },
+          };
+        }
+        
+        return {
+          content: [{ type: 'text', text: result.text }],
+          details: { path, text: result.text },
+        };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return {
+          content: [{ type: 'text', text: `Read error: ${message}` }],
+          details: { error: message },
+        };
+      }
+    },
+  };
+}
+
+function createLanceDBMemoryStoreTool(workspaceDir: string, config: NonNullable<MemoryBackendConfig['lancedb']>): AgentTool<typeof MemoryStoreSchema, {}> {
+  const backendConfig: MemoryBackendConfig = { backend: 'lancedb', lancedb: config };
+  
+  return {
+    name: 'memory_store',
+    label: '💾 Memory Store',
+    description: 'Save important information in long-term memory. Use for preferences, facts, decisions.',
+    parameters: MemoryStoreSchema,
+
+    async execute(
+      _toolCallId: string,
+      params: Static<typeof MemoryStoreSchema>,
+      _signal?: AbortSignal
+    ): Promise<AgentToolResult<{}>> {
+      const { text, importance = 0.7, category = 'other' } = params;
+
+      try {
+        const backend = await getOrCreateBackend(workspaceDir, backendConfig);
+        
+        if (!backend || !backend.store) {
+          return {
+            content: [{ type: 'text', text: 'Memory store not available' }],
+            details: { error: 'not_supported' },
+          };
+        }
+
+        const entry = await backend.store({ text, vector: [], importance, category });
+        
+        return {
+          content: [{ type: 'text', text: `Stored: "${text.slice(0, 50)}..." (id: ${entry.id})` }],
+          details: { action: 'created', id: entry.id },
+        };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return {
+          content: [{ type: 'text', text: `Store error: ${message}` }],
+          details: { error: message },
+        };
+      }
+    },
+  };
+}
+
+function createLanceDBMemoryForgetTool(workspaceDir: string, config: NonNullable<MemoryBackendConfig['lancedb']>): AgentTool<typeof MemoryForgetSchema, {}> {
+  const backendConfig: MemoryBackendConfig = { backend: 'lancedb', lancedb: config };
+  
+  return {
+    name: 'memory_forget',
+    label: '🗑️ Memory Forget',
+    description: 'Delete a specific memory by ID.',
+    parameters: MemoryForgetSchema,
+
+    async execute(
+      _toolCallId: string,
+      params: Static<typeof MemoryForgetSchema>,
+      _signal?: AbortSignal
+    ): Promise<AgentToolResult<{}>> {
+      const { memoryId } = params;
+
+      try {
+        const backend = await getOrCreateBackend(workspaceDir, backendConfig);
+        
+        if (!backend || !backend.delete) {
+          return {
+            content: [{ type: 'text', text: 'Memory delete not available' }],
+            details: { error: 'not_supported' },
+          };
+        }
+
+        await backend.delete(memoryId);
+        
+        return {
+          content: [{ type: 'text', text: `Memory ${memoryId} forgotten.` }],
+          details: { action: 'deleted', id: memoryId },
+        };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return {
+          content: [{ type: 'text', text: `Delete error: ${message}` }],
+          details: { error: message },
+        };
+      }
+    },
+  };
+}
+
+// =============================================================================
+// Factory Functions
+// =============================================================================
+
+export interface MemoryToolsOptions {
+  workspaceDir: string;
+  backendConfig?: MemoryBackendConfig;
+}
+
+/**
+ * Creates memory search tool based on configuration
+ */
+export function createMemorySearchTool(options: MemoryToolsOptions): AgentTool<typeof MemorySearchSchema, {}> {
+  const { workspaceDir, backendConfig } = options;
+  
+  if (backendConfig?.backend === 'lancedb' && backendConfig.lancedb?.apiKey) {
+    return createLanceDBMemorySearchTool(workspaceDir, backendConfig.lancedb);
+  }
+  
+  return createBuiltinMemorySearchTool(workspaceDir);
+}
+
+/**
+ * Creates memory get tool based on configuration
+ */
+export function createMemoryGetTool(options: MemoryToolsOptions): AgentTool<typeof MemoryGetSchema, {}> {
+  const { workspaceDir, backendConfig } = options;
+  
+  if (backendConfig?.backend === 'lancedb' && backendConfig.lancedb?.apiKey) {
+    return createLanceDBMemoryGetTool(workspaceDir, backendConfig.lancedb);
+  }
+  
+  return createBuiltinMemoryGetTool(workspaceDir);
+}
+
+/**
+ * Creates memory store tool - only available for LanceDB backend
+ * Returns null if not configured
+ */
+export function createMemoryStoreTool(options: MemoryToolsOptions): AgentTool<typeof MemoryStoreSchema, {}> | null {
+  const { workspaceDir, backendConfig } = options;
+  
+  if (backendConfig?.backend === 'lancedb' && backendConfig.lancedb?.apiKey) {
+    return createLanceDBMemoryStoreTool(workspaceDir, backendConfig.lancedb);
+  }
+  
+  return null;
+}
+
+/**
+ * Creates memory forget tool - only available for LanceDB backend
+ * Returns null if not configured
+ */
+export function createMemoryForgetTool(options: MemoryToolsOptions): AgentTool<typeof MemoryForgetSchema, {}> | null {
+  const { workspaceDir, backendConfig } = options;
+  
+  if (backendConfig?.backend === 'lancedb' && backendConfig.lancedb?.apiKey) {
+    return createLanceDBMemoryForgetTool(workspaceDir, backendConfig.lancedb);
+  }
+  
+  return null;
+}
+
+/**
+ * Check if LanceDB backend is properly configured
+ */
+export function isLanceDBConfigured(config?: MemoryBackendConfig): boolean {
+  return config?.backend === 'lancedb' && !!config.lancedb?.apiKey;
 }

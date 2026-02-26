@@ -15,6 +15,7 @@ import type { PluginTool } from '../plugins/types.js';
 import { resolveModel, DEFAULT_MODEL, getApiKey as getProviderApiKey } from '../providers/index.js';
 import { SessionStore, type CompactionConfig, type WindowConfig } from '../session/index.js';
 import { SessionCompactor } from './memory/compaction.js';
+import type { MemoryBackendConfig } from './memory/types.js';
 import {
   readFileTool,
   writeFileTool,
@@ -29,6 +30,8 @@ import {
   createSendMediaTool,
   createMemorySearchTool,
   createMemoryGetTool,
+  createMemoryStoreTool,
+  createMemoryForgetTool,
 } from './tools/index.js';
 import { createSkillLoader, type Skill } from './skills/index.js';
 import { getBundledSkillsDir } from '../config/paths.js';
@@ -42,6 +45,42 @@ import { SessionTracker } from './session-tracker.js';
 import { ModelManager } from './models/index.js';
 
 const log = createLogger('AgentService');
+
+// =============================================================================
+// Memory Backend Config from Environment
+// =============================================================================
+
+function getMemoryBackendConfig(): MemoryBackendConfig | undefined {
+  const backend = process.env.XOPCBOT_MEMORY_BACKEND;
+  if (!backend || backend === 'builtin') {
+    return undefined;
+  }
+
+  if (backend === 'lancedb') {
+    const apiKey = process.env.XOPCBOT_MEMORY_API_KEY;
+    if (!apiKey) {
+      log.warn('LanceDB memory backend configured but XOPCBOT_MEMORY_API_KEY not set');
+      return undefined;
+    }
+
+    return {
+      backend: 'lancedb',
+      lancedb: {
+        dbPath: process.env.XOPCBOT_MEMORY_DB_PATH,
+        provider: (process.env.XOPCBOT_MEMORY_PROVIDER as 'openai' | 'kimi' | 'voyage') || 'openai',
+        apiKey,
+        model: process.env.XOPCBOT_MEMORY_MODEL,
+        autoRecall: process.env.XOPCBOT_MEMORY_AUTO_RECALL === 'true',
+        autoCapture: process.env.XOPCBOT_MEMORY_AUTO_CAPTURE === 'true',
+        captureMaxChars: process.env.XOPCBOT_MEMORY_CAPTURE_MAX_CHARS 
+          ? parseInt(process.env.XOPCBOT_MEMORY_CAPTURE_MAX_CHARS) 
+          : 2000,
+      },
+    };
+  }
+
+  return undefined;
+}
 
 export interface AgentServiceConfig {
   workspace: string;
@@ -142,9 +181,26 @@ export class AgentService {
       webFetchTool,
       createMessageTool(bus, () => this.currentContext),
       createSendMediaTool(bus, () => this.currentContext),
-      createMemorySearchTool(config.workspace),
-      createMemoryGetTool(config.workspace),
     ];
+
+    // Memory backend config from environment
+    const memoryBackendConfig = getMemoryBackendConfig();
+    if (memoryBackendConfig) {
+      log.info({ backend: memoryBackendConfig.backend }, 'Using memory backend');
+      const memoryOptions = { workspaceDir: config.workspace, backendConfig: memoryBackendConfig };
+      tools.push(createMemorySearchTool(memoryOptions));
+      tools.push(createMemoryGetTool(memoryOptions));
+      
+      // Add LanceDB-specific tools if using lancedb backend
+      const storeTool = createMemoryStoreTool(memoryOptions);
+      const forgetTool = createMemoryForgetTool(memoryOptions);
+      if (storeTool) tools.push(storeTool);
+      if (forgetTool) tools.push(forgetTool);
+    } else {
+      // Use builtin fuzzy search
+      tools.push(createMemorySearchTool({ workspaceDir: config.workspace }));
+      tools.push(createMemoryGetTool({ workspaceDir: config.workspace }));
+    }
 
     if (config.pluginRegistry) {
       const pluginTools = this.convertPluginTools(config.pluginRegistry.getAllTools());

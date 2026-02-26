@@ -16,8 +16,10 @@ xopcbot has a set of built-in tools for the Agent to call.
 | 🔍 Web Search | `web_search` | Search the web using Brave Search |
 | 📄 Web Fetch | `web_fetch` | Fetch web page content |
 | 📤 Message | `send_message` | Send message to channel |
-| 🔍 Memory Search | `memory_search` | Search memory files |
+| 🔍 Memory Search | `memory_search` | Search memory (semantic with LanceDB) |
 | 📄 Memory Get | `memory_get` | Read memory snippets |
+| 💾 Memory Store | `memory_store` | Store memory (LanceDB only) |
+| 🗑️ Memory Forget | `memory_forget` | Delete memory (LanceDB only) |
 
 ---
 
@@ -138,11 +140,57 @@ Send message to configured channel.
 
 Search memory files. Must be called before answering questions about previous work, decisions, etc.
 
+**Backend**: Works with both `builtin` (fuzzy search) and `lancedb` (semantic vector search) backends.
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `query` | string | ✅ | Search query |
+| `maxResults` | number | ❌ | Maximum results (default 5) |
+| `minScore` | number | ❌ | Minimum similarity score (default 0.3) |
+
 ---
 
 ## 📄 memory_get
 
 Read snippets from memory files.
+
+**Backend**: For builtin, reads from MEMORY.md files. For LanceDB, reads by memory ID.
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `path` | string | ✅ | File path or memory ID |
+| `from` | number | ❌ | Start line number |
+| `lines` | number | ❌ | Number of lines |
+
+---
+
+## 💾 memory_store
+
+Store a new memory. **LanceDB backend only.**
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `text` | string | ✅ | Content to remember |
+| `importance` | number | ❌ | Importance 0-1 (default 0.7) |
+| `category` | string | ❌ | Category: preference, fact, decision, entity, other |
+
+---
+
+## 🗑️ memory_forget
+
+Delete a memory by ID. **LanceDB backend only.**
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `memoryId` | string | ✅ | Memory ID to delete |
 
 ---
 

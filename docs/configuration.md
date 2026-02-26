@@ -383,6 +383,81 @@ Local model development settings.
 |-------|------|---------|-------------|
 | `enabled` | boolean | `true` | Enable local model cache |
 
+## Memory Configuration
+
+xopcbot supports two memory backends:
+
+### Builtin (Default)
+
+The default fuzzy-search based memory:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `backend` | string | `builtin` | Memory backend type |
+
+No additional configuration needed - uses simple fuzzy string matching.
+
+### LanceDB (Vector Search)
+
+Enable semantic vector search using LanceDB:
+
+```bash
+# Enable LanceDB backend
+XOPCBOT_MEMORY_BACKEND=lancedb
+
+# API Key (required) - supports OpenAI, Kimi, or Voyage
+XOPCBOT_MEMORY_API_KEY=sk-...
+
+# Provider (optional, default: openai)
+XOPCBOT_MEMORY_PROVIDER=kimi  # or: openai, voyage
+
+# Embedding model (optional)
+XOPCBOT_MEMORY_MODEL=text-embedding-3-small
+
+# Database path (optional, default: .memory/lancedb in workspace)
+XOPCBOT_MEMORY_DB_PATH=/path/to/db
+```
+
+#### Auto-Recall
+
+Automatically inject relevant memories before each agent response:
+
+```bash
+XOPCBOT_MEMORY_AUTO_RECALL=true
+```
+
+This searches the vector database and injects relevant memories into the conversation context when similarity score ≥ 0.4.
+
+#### Auto-Capture
+
+Automatically capture important information from conversations:
+
+```bash
+XOPCBOT_MEMORY_AUTO_CAPTURE=true
+
+# Max text length to capture (optional, default: 2000)
+XOPCBOT_MEMORY_CAPTURE_MAX_CHARS=2000
+```
+
+Auto-capture detects:
+- **preferences**: "I prefer dark mode", "I like coffee"
+- **decisions**: "We decided to use TypeScript"
+- **entities**: phone numbers, emails, names
+- **facts**: "The sky is blue", "User is admin"
+
+Duplicate detection prevents storing similar memories (similarity > 95%).
+
+### Memory Tools
+
+When using LanceDB backend, additional tools are available:
+
+| Tool | Description |
+|------|-------------|
+| `memory_search` | Semantic vector search (works with both backends) |
+| `memory_get` | Read memory file (builtin) or by ID (LanceDB) |
+| `memory_store` | Manually store a memory (LanceDB only) |
+| `memory_forget` | Delete a memory by ID (LanceDB only) |
+
 ## Environment Variables
 
 xopcbot supports environment variables for sensitive data:
@@ -394,6 +469,11 @@ xopcbot supports environment variables for sensitive data:
 | `GOOGLE_API_KEY` | Google AI API key |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token |
 | `WHATSAPP_BRIDGE_URL` | WhatsApp bridge URL |
+| `XOPCBOT_MEMORY_BACKEND` | Memory backend (`builtin` or `lancedb`) |
+| `XOPCBOT_MEMORY_API_KEY` | API key for vector embeddings |
+| `XOPCBOT_MEMORY_PROVIDER` | Embedding provider (`openai`, `kimi`, `voyage`) |
+| `XOPCBOT_MEMORY_AUTO_RECALL` | Enable auto-recall (`true` or `false`) |
+| `XOPCBOT_MEMORY_AUTO_CAPTURE` | Enable auto-capture (`true` or `false`) |
 
 Environment variables take priority over config file values.
 

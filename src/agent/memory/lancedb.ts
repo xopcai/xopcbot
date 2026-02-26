@@ -240,8 +240,15 @@ export class LanceDBMemoryBackend implements MemoryBackend {
   async store(entry: Omit<MemoryEntry, 'id' | 'createdAt'>): Promise<MemoryEntry> {
     await this.ensureInitialized();
 
+    // Compute embedding if not provided
+    let vector = entry.vector;
+    if (!vector || vector.length === 0) {
+      vector = await this.embeddings.embed(entry.text);
+    }
+
     const fullEntry: MemoryEntry = {
       ...entry,
+      vector,
       id: randomUUID(),
       createdAt: Date.now(),
     };

@@ -34,6 +34,8 @@ import {
   createMemoryForgetTool,
   performAutoRecall,
   isAutoRecallEnabled,
+  performAutoCapture,
+  isAutoCaptureEnabled,
 } from './tools/index.js';
 import { createSkillLoader, type Skill } from './skills/index.js';
 import { getBundledSkillsDir } from '../config/paths.js';
@@ -654,6 +656,18 @@ export class AgentService {
 
       await this.sessionStore.save(sessionKey, this.agent.state.messages);
       await this.triggerHook('agent_end', { messages: this.agent.state.messages, success: true, durationMs: 0 });
+
+      // Auto-capture: store important information from conversation
+      if (isAutoCaptureEnabled(memoryConfig)) {
+        const captureResult = await performAutoCapture(
+          config.workspace,
+          this.agent.state.messages,
+          memoryConfig
+        );
+        if (captureResult.captured > 0) {
+          log.info({ captured: captureResult.captured, skipped: captureResult.skipped }, 'Auto-capture complete');
+        }
+      }
     } finally {
       typing.stop();
     }

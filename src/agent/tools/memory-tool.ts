@@ -499,3 +499,243 @@ ${memories}
 export function isAutoRecallEnabled(config?: MemoryBackendConfig): boolean {
   return config?.backend === 'lancedb' && config.lancedb?.autoRecall === true;
 }
+
+// =============================================================================
+// Auto-Capture Functions
+// =============================================================================
+
+// Trigger patterns for detecting important information
+const MEMORY_TRIGGERS = [
+  /zapamatuj si|pamatuj|remember/i,
+  /preferuji|radši|nechci|prefer/i,
+  /rozhodli jsme|budeme používat/i,
+  /\+\d{10,}/,  // Phone numbers
+  /[\w.-]+@[\w.-]+\.\w+/,  // Emails
+  /můj\s+\w+\s+je|je\s+můj/i,  // "my X is Y" in Czech
+  /my\s+\w+\s+is|is\s+my/i,  // "my X is Y" in English
+  /i (like|prefer|hate|love|want|need)/i,
+  /always|never|important/i,
+];
+
+// Patterns to skip (likely not important)
+const SKIP_PATTERNS = [
+  /^[\s]*$/,  // Empty
+  /^[\s]*$/,  // Just whitespace
+  /^(hi|hello|hey|thanks|thank you)/i,  // Greetings
+];
+
+// Prompt injection detection
+const PROMPT_INJECTION_PATTERNS = [
+  /ignore (all|any|previous|above|prior) instructions/i,
+  /do not follow (the )?(system|developer)/i,
+  /system prompt/i,
+  /developer message/i,
+  /<\s*(system|assistant|developer|tool|function)\b/i,
+];
+
+/**
+ * Check if text looks like a prompt injection attempt
+ */
+function looksLikePromptInjection(text: string): boolean {
+  return PROMPT_INJECTION_PATTERNS.some(pattern => pattern.test(text));
+}
+
+/**
+ * Detect category of the memory text
+ */
+function detectCategory(text: string): MemoryCategory {
+  const lower = text.toLowerCase();
+  
+  // Preference
+  if (/prefer|radši|like|love|hate|want|i (like|prefer|hate|love)|don't like/i.test(lower)) {
+    return 'preference';
+  }
+  
+  // Decision
+  if (/rozhodli|decided|will use|budeme|let's|i'll|i will|going to/i.test(lower)) {
+    return 'decision';
+  }
+  
+  // Entity (names, contacts)
+  if (/\+\d{10,}|@[\w.-]+\.\w+|is called|jmenuje se|my (wife|husband|dad|mom|friend|name)/i.test(lower)) {
+    return 'entity';
+  }
+  
+  // Fact
+  if (/is|are|has|have|je|má|jsou/i.test(lower)) {
+    return 'fact';
+  }
+  
+  return 'other';
+}
+
+/**
+ * Determine if a message should be captured as a memory
+ */
+export function shouldCaptureMemory(
+  text: string,
+  options?: { maxChars?: number; minChars?: number }
+): boolean {
+  const maxChars = options?.maxChars ?? 2000;
+  const minChars = options?.minChars ?? 10;
+  
+  // Length check
+  if (text.length < minChars || text.length > maxChars) {
+    return false;
+  }
+  
+  // Skip empty
+  if (!text.trim()) {
+    return false;
+  }
+  
+  // Skip prompt injection
+  if (looksLikePromptInjection(text)) {
+    return false;
+  }
+  
+  // Skip short greetings
+  if (SKIP_PATTERNS[0].test(text) || SKIP_PATTERNS[1].test(text) || SKIP_PATTERNS[2].test(text)) {
+    return false;
+  }
+  
+  // Check if matches trigger patterns
+  return MEMORY_TRIGGERS.some(pattern => pattern.test(text));
+}
+
+/**
+ * Extract text content from messages (handles various message formats)
+ */
+function extractUserMessages(messages: unknown[]): string[] {
+  const texts: string[] = [];
+  
+  for (const msg of messages) {
+    if (!msg || typeof msg !== 'object') continue;
+    
+    const msgObj = msg as Record<string, unknown>;
+    const role = msgObj.role;
+    
+    // Only process user messages
+    if (role !== 'user') continue;
+    
+    const content = msgObj.content;
+    
+    // String content
+    if (typeof content === 'string') {
+      texts.push(content);
+      continue;
+    }
+    
+    // Array content (content blocks)
+    if (Array.isArray(content)) {
+      for (const block of content) {
+        if (
+          block &&
+          typeof block === 'object' &&
+          'type' in block &&
+          (block as Record<string, unknown>).type === 'text' &&
+          'text' in block &&
+          typeof (block as Record<string, unknown>).text === 'string'
+        ) {
+          texts.push((block as Record<string, unknown>).text as string);
+        }
+      }
+    }
+  }
+  
+  return texts;
+}
+
+/**
+ * Performs auto-capture: analyzes messages and stores important info
+ */
+export async function performAutoCapture(
+  workspaceDir: string,
+  messages: unknown[],
+  config: MemoryBackendConfig
+): Promise<{ captured: number; skipped: number }> {
+  // Only work with LanceDB backend
+  if (config.backend !== 'lancedb' || !config.lancedb?.apiKey) {
+    return { captured: 0, skipped: 0 };
+  }
+
+  // Check if auto-capture is enabled
+  if (!config.lancedb.autoCapture) {
+    return { captured: 0, skipped: 0 };
+  }
+
+  const maxChars = config.lancedb.captureMaxChars ?? 2000;
+  const backendConfig: MemoryBackendConfig = { backend: 'lancedb', lancedb: config.lancedb };
+
+  try {
+    const backend = await getOrCreateBackend(workspaceDir, backendConfig);
+    
+    if (!backend || !backend.store) {
+      log.warn('Auto-capture: backend unavailable');
+      return { captured: 0, skipped: 0 };
+    }
+
+    // Extract user messages
+    const userMessages = extractUserMessages(messages);
+    
+    if (userMessages.length === 0) {
+      return { captured: 0, skipped: 0 };
+    }
+
+    let captured = 0;
+    let skipped = 0;
+    const maxCapture = 3;  // Limit captures per conversation
+
+    for (const text of userMessages) {
+      if (captured >= maxCapture) break;
+      
+      // Check if should capture
+      if (!shouldCaptureMemory(text, { maxChars })) {
+        skipped++;
+        continue;
+      }
+
+      // Detect category
+      const category = detectCategory(text);
+
+      // Check for duplicates (high similarity)
+      try {
+        const existing = await backend.search(text, { maxResults: 1, minScore: 0.95 });
+        if (existing.length > 0) {
+          skipped++;
+          log.debug({ text: text.slice(0, 30) }, 'Auto-capture: duplicate detected, skipping');
+          continue;
+        }
+      } catch {
+        // Search failed, proceed with storing
+      }
+
+      // Store the memory
+      await backend.store({
+        text,
+        vector: [],  // Backend will compute embedding
+        importance: 0.7,
+        category,
+      });
+
+      captured++;
+      log.info({ category, text: text.slice(0, 30) }, 'Auto-capture: stored memory');
+    }
+
+    if (captured > 0) {
+      log.info({ captured, skipped }, 'Auto-capture: complete');
+    }
+
+    return { captured, skipped };
+  } catch (err) {
+    log.error({ err }, 'Auto-capture failed');
+    return { captured: 0, skipped: 0 };
+  }
+}
+
+/**
+ * Check if auto-capture is enabled in config
+ */
+export function isAutoCaptureEnabled(config?: MemoryBackendConfig): boolean {
+  return config?.backend === 'lancedb' && config.lancedb?.autoCapture === true;
+}

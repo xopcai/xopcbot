@@ -13,6 +13,9 @@ export {
   createMemoryForgetTool,
   performAutoRecall,
   isAutoRecallEnabled,
+  performAutoCapture,
+  isAutoCaptureEnabled,
+  shouldCaptureMemory,
 } from './memory-tool.js';
 
 // Grep and Find tools

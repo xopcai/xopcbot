@@ -227,6 +227,28 @@ export const ModelsDevConfigSchema = z.object({
 });
 
 // ============================================
+// STT (Speech-to-Text) Config
+// ============================================
+
+export const STTProviderConfigSchema = z.object({
+  apiKey: z.string().optional(),
+  model: z.string().optional(),
+});
+
+export const STTFallbackConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  order: z.array(z.enum(['alibaba', 'openai'])).default(['alibaba', 'openai']),
+});
+
+export const STTConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  provider: z.enum(['alibaba', 'openai']).default('alibaba'),
+  alibaba: STTProviderConfigSchema.optional(),
+  openai: STTProviderConfigSchema.optional(),
+  fallback: STTFallbackConfigSchema.optional(),
+});
+
+// ============================================
 // Plugin Configs
 // ============================================
 
@@ -252,6 +274,7 @@ export const ConfigSchema = z.object({
   plugins: PluginsConfigSchema,
   modelsDev: ModelsDevConfigSchema,
   providers: ProvidersConfigSchema,
+  stt: STTConfigSchema.optional(),
 }).default({
   agents: {
     defaults: {
@@ -324,6 +347,20 @@ export const ConfigSchema = z.object({
     enabled: true,
   },
   providers: {},
+  stt: {
+    enabled: false,
+    provider: 'alibaba',
+    alibaba: {
+      model: 'paraformer-v1',
+    },
+    openai: {
+      model: 'whisper-1',
+    },
+    fallback: {
+      enabled: true,
+      order: ['alibaba', 'openai'],
+    },
+  },
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -331,6 +368,7 @@ export type AgentDefaults = z.infer<typeof AgentDefaultsSchema>;
 export type GatewayAuthConfig = z.infer<typeof GatewayAuthSchema>;
 export type TelegramConfig = z.infer<typeof TelegramConfigSchema>;
 export type WhatsAppConfig = z.infer<typeof WhatsAppConfigSchema>;
+export type STTConfig = z.infer<typeof STTConfigSchema>;
 
 // ============================================
 // Helper Functions

@@ -36,6 +36,7 @@ import { formatTelegramMessage } from '../format.js';
 import { createLogger } from '../../utils/logger.js';
 import type { Config } from '../../config/index.js';
 import { createTelegramCommandHandler } from './command-handler.js';
+import { transcribe, isSTTAvailable } from '../../stt/index.js';
 
 const log = createLogger('TelegramPlugin');
 
@@ -300,9 +301,11 @@ function createMessageProcessor(deps: MessageProcessorDeps) {
     if (message.document) media.push({ type: 'document', fileId: message.document.file_id });
     if (message.video) media.push({ type: 'video', fileId: message.video.file_id });
     if (message.audio) media.push({ type: 'audio', fileId: message.audio.file_id });
+    if (message.voice) media.push({ type: 'voice', fileId: message.voice.file_id });
 
     // Download media files and convert to attachments
     const attachments: Array<{ type: string; mimeType: string; data: string; name?: string; size?: number }> = [];
+    let transcribedText = '';
     const bot = accountManager.getBot(accountId);
     const botToken = account.token;
 
@@ -318,6 +321,21 @@ function createMessageProcessor(deps: MessageProcessorDeps) {
             throw new Error(`Failed to download: ${response.status}`);
           }
           const buffer = await response.arrayBuffer();
+          
+          // Handle voice messages with STT
+          if (item.type === 'voice' && config?.stt && isSTTAvailable(config.stt)) {
+            try {
+              const sttResult = await transcribe(Buffer.from(buffer), config.stt, {
+                language: config.stt.provider === 'alibaba' ? 'zh' : undefined,
+              });
+              transcribedText = sttResult.text;
+              log.info({ provider: sttResult.provider, textLength: transcribedText.length }, 'Voice transcribed');
+            } catch (sttError) {
+              log.error({ error: sttError }, 'STT transcription failed');
+              transcribedText = '[语音转文字失败]';
+            }
+          }
+          
           const base64 = Buffer.from(buffer).toString('base64');
           const mimeType = getMimeType(item.type, file.file_path);
           attachments.push({
@@ -334,19 +352,25 @@ function createMessageProcessor(deps: MessageProcessorDeps) {
       }
     }
 
-    log.info({ accountId, chatId, senderId, isGroup, threadId, sessionKey, contentLength: cleanContent.length, attachmentCount: attachments.length }, 'Processing Telegram message');
+    // Combine transcribed text with original content
+    const finalContent = transcribedText 
+      ? transcribedText + (cleanContent ? '\n\n' + cleanContent : '')
+      : cleanContent;
+
+    log.info({ accountId, chatId, senderId, isGroup, threadId, sessionKey, contentLength: finalContent.length, attachmentCount: attachments.length, hasVoice: !!transcribedText }, 'Processing Telegram message');
 
     await bus.publishInbound({
       channel: 'telegram',
       sender_id: senderId,
       chat_id: chatId,
-      content: cleanContent,
+      content: finalContent,
       metadata: {
         sessionKey,
         messageId: String(message.message_id),
         isGroup,
         threadId: threadId ? String(threadId) : undefined,
         media: media.length > 0 ? media : undefined,
+        transcribedVoice: !!transcribedText || undefined,
       },
       attachments: attachments.length > 0 ? attachments : undefined,
     });

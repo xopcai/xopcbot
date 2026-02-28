@@ -4,7 +4,7 @@
  * Unified interface for multiple STT providers
  */
 
-import type { STTProvider, STTResult, STTOptions, STTConfig } from './types.js';
+import type { STTResult, STTOptions, STTConfig } from './types.js';
 import { createSTTProvider, createFallbackProviders } from './factory.js';
 import { createLogger } from '../utils/logger.js';
 

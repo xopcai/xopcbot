@@ -249,6 +249,24 @@ export const STTConfigSchema = z.object({
 });
 
 // ============================================
+// TTS (Text-to-Speech) Config
+// ============================================
+
+export const TTSProviderConfigSchema = z.object({
+  apiKey: z.string().optional(),
+  model: z.string().optional(),
+  voice: z.string().optional(),
+});
+
+export const TTSConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  provider: z.enum(['openai', 'alibaba']).default('openai'),
+  trigger: z.enum(['auto', 'never']).default('auto'),
+  alibaba: TTSProviderConfigSchema.optional(),
+  openai: TTSProviderConfigSchema.optional(),
+});
+
+// ============================================
 // Plugin Configs
 // ============================================
 
@@ -275,6 +293,7 @@ export const ConfigSchema = z.object({
   modelsDev: ModelsDevConfigSchema,
   providers: ProvidersConfigSchema,
   stt: STTConfigSchema.optional(),
+  tts: TTSConfigSchema.optional(),
 }).default({
   agents: {
     defaults: {
@@ -361,6 +380,19 @@ export const ConfigSchema = z.object({
       order: ['alibaba', 'openai'],
     },
   },
+  tts: {
+    enabled: false,
+    provider: 'openai',
+    trigger: 'auto',
+    alibaba: {
+      model: 'cosyvoice-v1',
+      voice: 'longxiaochun',
+    },
+    openai: {
+      model: 'tts-1',
+      voice: 'alloy',
+    },
+  },
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -369,6 +401,7 @@ export type GatewayAuthConfig = z.infer<typeof GatewayAuthSchema>;
 export type TelegramConfig = z.infer<typeof TelegramConfigSchema>;
 export type WhatsAppConfig = z.infer<typeof WhatsAppConfigSchema>;
 export type STTConfig = z.infer<typeof STTConfigSchema>;
+export type TTSConfig = z.infer<typeof TTSConfigSchema>;
 
 // ============================================
 // Helper Functions

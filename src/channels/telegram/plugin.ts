@@ -37,6 +37,7 @@ import { createLogger } from '../../utils/logger.js';
 import type { Config } from '../../config/index.js';
 import { createTelegramCommandHandler } from './command-handler.js';
 import { transcribe, isSTTAvailable } from '../../stt/index.js';
+import { speak, isTTSAvailable } from '../../tts/index.js';
 
 const log = createLogger('TelegramPlugin');
 
@@ -792,6 +793,32 @@ export class TelegramChannelPlugin implements ChannelPlugin {
           return { messageId: '', chatId, success: false, error: 'Telegram API response missing message_id' };
         }
         sentMessageId = apiResult.message_id;
+      } else if (options.tts && this.config?.tts && isTTSAvailable(this.config.tts)) {
+        // TTS: Generate voice message
+        log.info({ chatId, contentLength: content?.length }, 'Generating TTS voice message');
+        
+        try {
+          const ttsResult = await speak(content || '', this.config.tts);
+          const file = new InputFile(Buffer.from(ttsResult.audio), 'voice.opus');
+          
+          const sendOptions: any = {};
+          if (threadId) sendOptions.message_thread_id = parseInt(threadId, 10);
+          if (replyToMessageId) sendOptions.reply_to_message_id = parseInt(replyToMessageId, 10);
+          if (silent) sendOptions.disable_notification = true;
+
+          sentMessageId = (await bot.api.sendVoice(chatId, file, sendOptions)).message_id;
+          log.info({ chatId, messageId: sentMessageId, provider: ttsResult.provider }, 'TTS voice message sent');
+        } catch (ttsError) {
+          log.error({ error: ttsError }, 'TTS generation failed, falling back to text');
+          // Fallback to text message
+          const { html } = formatTelegramMessage(content || '');
+          const sendOptions: any = { parse_mode: 'HTML' };
+          if (threadId) sendOptions.message_thread_id = parseInt(threadId, 10);
+          if (replyToMessageId) sendOptions.reply_to_message_id = parseInt(replyToMessageId, 10);
+          if (silent) sendOptions.disable_notification = true;
+
+          sentMessageId = (await bot.api.sendMessage(chatId, html, sendOptions)).message_id;
+        }
       } else {
         const { html } = formatTelegramMessage(content || '');
         const sendOptions: any = { parse_mode: 'HTML' };

@@ -5,9 +5,6 @@
 import type { TTSProvider, TTSConfig } from './types.js';
 import { OpenAIProvider } from './openai.js';
 import { AlibabaProvider } from './alibaba.js';
-import { createLogger } from '../utils/logger.js';
-
-const log = createLogger('TTS:Factory');
 
 export function createTTSProvider(config: TTSConfig): TTSProvider {
   if (!config.enabled) {

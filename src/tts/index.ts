@@ -11,6 +11,11 @@ import { createLogger } from '../utils/logger.js';
 const log = createLogger('TTS');
 
 /**
+ * Check if TTS is available with current configuration
+ */
+export { isTTSAvailable };
+
+/**
  * Convert text to speech
  */
 export async function speak(
@@ -33,4 +38,4 @@ export async function speak(
 export type { TTSResult, TTSOptions, TTSConfig, TTSProvider } from './types.js';
 export { OpenAIProvider } from './openai.js';
 export { AlibabaProvider } from './alibaba.js';
-export { createTTSProvider, isTTSAvailable } from './factory.js';
+export { createTTSProvider } from './factory.js';

@@ -324,15 +324,21 @@ function createMessageProcessor(deps: MessageProcessorDeps) {
           
           // Handle voice messages with STT
           if (item.type === 'voice' && config?.stt && isSTTAvailable(config.stt)) {
-            try {
-              const sttResult = await transcribe(Buffer.from(buffer), config.stt, {
-                language: config.stt.provider === 'alibaba' ? 'zh' : undefined,
-              });
-              transcribedText = sttResult.text;
-              log.info({ provider: sttResult.provider, textLength: transcribedText.length }, 'Voice transcribed');
-            } catch (sttError) {
-              log.error({ error: sttError }, 'STT transcription failed');
-              transcribedText = '[语音转文字失败]';
+            const voiceDuration = message.voice?.duration || 0;
+            if (voiceDuration > 60) {
+              log.warn({ duration: voiceDuration }, 'Voice message too long (>60s), skipping STT');
+              transcribedText = '[语音超过1分钟，不支持转文字]';
+            } else {
+              try {
+                const sttResult = await transcribe(Buffer.from(buffer), config.stt, {
+                  language: config.stt.provider === 'alibaba' ? 'zh' : undefined,
+                });
+                transcribedText = sttResult.text;
+                log.info({ provider: sttResult.provider, textLength: transcribedText.length }, 'Voice transcribed');
+              } catch (sttError) {
+                log.error({ error: sttError }, 'STT transcription failed');
+                transcribedText = '[语音转文字失败]';
+              }
             }
           }
           

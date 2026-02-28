@@ -81,13 +81,27 @@ interface SettingsData {
       token?: string;
     };
   };
+  stt?: {
+    enabled: boolean;
+    provider: 'alibaba' | 'openai';
+    alibaba?: { apiKey?: string; model?: string };
+    openai?: { apiKey?: string; model?: string };
+    fallback?: { enabled: boolean; order: ('alibaba' | 'openai')[] };
+  };
+  tts?: {
+    enabled: boolean;
+    provider: 'openai' | 'alibaba';
+    trigger: 'auto' | 'never';
+    alibaba?: { apiKey?: string; model?: string; voice?: string };
+    openai?: { apiKey?: string; model?: string; voice?: string };
+  };
 }
 
 @customElement('settings-page')
 export class SettingsPage extends LitElement {
   @property({ attribute: false }) config?: SettingsPageConfig;
 
-  @state() private _activeSection: 'agent' | 'providers' | 'models' | 'channels' | 'gateway' = 'agent';
+  @state() private _activeSection: 'agent' | 'providers' | 'models' | 'channels' | 'voice' | 'gateway' = 'agent';
   @state() private _loading = false;
   @state() private _saving = false;
   @state() private _saveSuccess = false;
@@ -439,6 +453,7 @@ export class SettingsPage extends LitElement {
       { id: 'providers', title: t('settings.sections.providers'), icon: 'cloud' },
       { id: 'models', title: t('settings.sections.models') || 'Models', icon: 'cpu' },
       { id: 'channels', title: t('settings.sections.channels'), icon: 'plug' },
+      { id: 'voice', title: t('settings.sections.voice') || 'Voice (STT/TTS)', icon: 'mic' },
       { id: 'gateway', title: t('settings.sections.gateway'), icon: 'globe' },
     ] as const;
 
@@ -1063,7 +1078,7 @@ export class SettingsPage extends LitElement {
     `;
   }
 
-  private _renderGatewaySection() {
+  private _renderVoiceSection() {
     return html`
       <div class="section-content">
         <div class="section-header">
@@ -1159,6 +1174,8 @@ export class SettingsPage extends LitElement {
         return this._renderModelsSection();
       case 'channels':
         return this._renderChannelsSection();
+      case 'voice':
+        return this._renderVoiceSection();
       case 'gateway':
         return this._renderGatewaySection();
       default:

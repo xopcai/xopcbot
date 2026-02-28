@@ -8,6 +8,7 @@ import { getIcon } from '../utils/icons.js';
 import { t } from '../utils/i18n.js';
 import '../components/ProviderList.js';
 import '../components/ModelSelector.js';
+import '../components/VoiceConfigSection.js';
 import { fetchConfiguredModels, fetchProviderMeta, type Model } from '../config/registry-client.js';
 import type { ProviderInfo, ProviderListChangeEvent, ProviderListOAuthEvent } from '../components/ProviderList.js';
 import '../components/ModelJsonEditor.js';
@@ -1080,17 +1081,12 @@ export class SettingsPage extends LitElement {
 
   private _renderVoiceSection() {
     return html`
-      <div class="section-content">
-        <div class="section-header">
-          <h2>${t('settings.sections.gateway')}</h2>
-        </div>
-
-        <div class="fields-grid">
-          <!-- Auth Token -->
-          <div class="field-group">
-            <div class="field-header">
-              <label class="field-label">Access Token</label>
-            </div>
+      <voice-config-section
+        .config=${{ stt: this._settings.stt, tts: this._settings.tts }}
+        .onChange=${(path: string, value: unknown) => this._updateSettings(path, value)}
+      ></voice-config-section>
+    `;
+  }
             <div class="input-with-actions">
               <input
                 class="text-input"

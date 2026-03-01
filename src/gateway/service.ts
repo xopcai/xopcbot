@@ -229,12 +229,10 @@ export class GatewayService {
 
   /**
    * Restart the gateway service by:
-   * 1. Spawning a new child process with the same arguments
-   * 2. Waiting for the child to be ready (port available)
-   * 3. Gracefully shutting down the current process
+   * 1. Gracefully shutting down the current process
+   * 2. Spawning a new child process with the same arguments
    * 
-   * This enables minimal downtime restart. The new process will start
-   * on the same port after the old process releases it.
+   * This is a sequential restart - ensures no port conflicts.
    */
   async restart(): Promise<{ restarting: boolean; message: string }> {
     if (!this.running) {
@@ -263,91 +261,53 @@ export class GatewayService {
     const childEnv = {
       ...process.env,
       GATEWAY_RESTART_MODE: 'true',
-      GATEWAY_PARENT_PID: String(process.pid),
     };
 
-    log.info({ 
-      command,
-      entryPoint,
-      args,
-    }, 'Spawning new gateway process');
+    try {
+      // Step 1: Gracefully stop the current service
+      log.info('Stopping current gateway service...');
+      await this.stop();
+      log.info('Current service stopped');
 
-    // Spawn a new child process
-    const child = spawn(command, [entryPoint, ...args], {
-      env: childEnv,
-      stdio: 'inherit',
-      detached: false,
-    });
+      // Brief pause to ensure port is released
+      await new Promise(resolve => setTimeout(resolve, 500));
 
-    return new Promise((resolve) => {
-      // Set a timeout for the restart (30 seconds)
-      const timeout = setTimeout(() => {
-        log.error('Restart timeout - killing child process');
-        child.kill('SIGKILL');
-        resolve({ 
-          restarting: false, 
-          message: 'Restart timed out after 30 seconds' 
-        });
-      }, 30000);
+      // Step 2: Spawn new gateway process
+      log.info({ command, entryPoint, args }, 'Starting new gateway process');
 
-      // Handle child process ready (started successfully)
-      child.on('spawn', () => {
-        log.info({ pid: child.pid }, 'Child process spawned, waiting for it to be ready...');
+      const child = spawn(command, [entryPoint, ...args], {
+        env: childEnv,
+        stdio: 'inherit',
+        detached: true,
       });
 
-      // Handle child process exit (not expected during restart)
-      child.on('exit', (code, signal) => {
-        clearTimeout(timeout);
-        
-        // If child exits quickly, it likely failed to start
-        if (code !== 0 && code !== null) {
-          log.error({ code, signal }, 'Child process exited unexpectedly');
-          resolve({ 
-            restarting: false, 
-            message: `Failed to start new gateway process (exit code: ${code})` 
-          });
-        }
-      });
+      // Unref so parent can exit
+      child.unref();
 
-      // Handle child process errors
-      child.on('error', (err) => {
-        clearTimeout(timeout);
-        log.error({ err }, 'Child process error');
-        resolve({ 
-          restarting: false, 
-          message: `Failed to spawn new gateway process: ${err.message}` 
-        });
-      });
+      // Give the child process time to start
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Give the child a moment to start, then initiate graceful shutdown
-      // The child will handle the port binding and signal when ready
-      setTimeout(async () => {
-        log.info('Initiating graceful shutdown of current process');
-        
-        try {
-          await this.stop();
-          log.info('Current process stopped successfully');
-          
-          // Signal success - the new process should now be handling requests
-          resolve({ 
-            restarting: true, 
-            message: 'Gateway is restarting... New process is starting.' 
-          });
-          
-          // Exit the current process
-          // Give a moment for the response to be sent
-          setTimeout(() => {
-            process.exit(0);
-          }, 1000);
-        } catch (err) {
-          log.error({ err }, 'Error during graceful shutdown');
-          resolve({ 
-            restarting: false, 
-            message: 'Error during graceful shutdown' 
-          });
-        }
-      }, 2000); // Wait 2 seconds for child to initialize
-    });
+      log.info('New gateway process started');
+      
+      // Exit the current process after response is sent
+      // Use setTimeout to allow the API response to be sent first
+      setTimeout(() => {
+        log.info('Exiting current process...');
+        process.exit(0);
+      }, 1000);
+      
+      return { 
+        restarting: true, 
+        message: 'Gateway is restarting... Service will be available shortly.' 
+      };
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      log.error({ err: errorMessage }, 'Failed to restart gateway');
+      return { 
+        restarting: false, 
+        message: `Failed to restart: ${errorMessage}` 
+      };
+    }
   }
 
   /**

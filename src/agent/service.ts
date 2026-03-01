@@ -431,6 +431,22 @@ export class AgentService {
       // Check if it's a command using the new command system
       if (content.startsWith('/')) {
         const parsed = this.parseCommand(content);
+        
+        // Handle ACP commands
+        if (parsed?.command === 'acp') {
+          const { handleAcpCommand } = await import('../commands/acp.js');
+          const isGroup = (msg.metadata?.isGroup as boolean) || false;
+          const cmdCtx = await this.createCommandContext(msg, sessionKey, isGroup);
+          const result = await handleAcpCommand(cmdCtx, parsed.args);
+          await this.bus.publishOutbound({
+            channel: msg.channel,
+            chat_id: msg.chat_id,
+            content: result.content,
+            type: 'message',
+          });
+          return;
+        }
+        
         if (parsed && parsed.command !== 'skills') { // Keep /skills reload as-is for now
           // Use new command system
           const isGroup = (msg.metadata?.isGroup as boolean) || false;
@@ -986,5 +1002,93 @@ export class AgentService {
     }
 
     return true;
+  }
+
+  /**
+   * Create command context for ACP and other commands
+   */
+  private async createCommandContext(
+    msg: InboundMessage,
+    sessionKey: string,
+    isGroup: boolean
+  ): Promise<import('../commands/types.js').CommandContext> {
+    const { createCommandContext } = await import('../commands/index.js');
+    
+    return createCommandContext({
+      sessionKey,
+      source: msg.channel as any,
+      channelId: msg.channel,
+      chatId: msg.chat_id,
+      senderId: msg.sender_id,
+      isGroup,
+      config: this.config.config!,
+      bus: this.bus,
+      sessionStore: this.sessionStore,
+      
+      replyHandler: async (text: string, options?) => {
+        await this.bus.publishOutbound({
+          channel: msg.channel,
+          chat_id: msg.chat_id,
+          content: text,
+          type: 'message',
+        });
+      },
+      
+      typingHandler: async (typing: boolean) => {
+        await this.bus.publishOutbound({
+          channel: msg.channel,
+          chat_id: msg.chat_id,
+          type: typing ? 'typing_on' : 'typing_off',
+        });
+      },
+      
+      supportedFeatures: ['markdown', 'typing'],
+      
+      getCurrentModel: () => this.modelManager.getCurrentModel(),
+      
+      switchModel: async (modelId: string) => {
+        return this.modelManager.switchModelForSession(sessionKey, modelId);
+      },
+      
+      listModels: async () => {
+        const providers = getAllProviders();
+        const models: Array<{ id: string; name: string; provider: string }> = [];
+        
+        for (const providerId of providers) {
+          if (isProviderConfigured(this.config.config!, providerId)) {
+            const providerModels = getModelsByProvider(providerId);
+            for (const m of providerModels) {
+              models.push({
+                id: `${m.provider}/${m.id}`,
+                name: m.name || m.id,
+                provider: getProviderDisplayName(providerId),
+              });
+            }
+          }
+        }
+        
+        return models;
+      },
+      
+      getUsage: async () => {
+        const messages = await this.sessionStore.load(sessionKey);
+        let promptTokens = 0;
+        let completionTokens = 0;
+        
+        for (const msg of messages) {
+          if ('usage' in msg && msg.usage) {
+            promptTokens += (msg.usage as any).input || 0;
+            completionTokens += (msg.usage as any).output || 0;
+          }
+        }
+        
+        return {
+          promptTokens,
+          completionTokens,
+          totalTokens: promptTokens + completionTokens,
+          messageCount: messages.length,
+        };
+      },
+    });
   }
 }

@@ -65,6 +65,9 @@ export { registerSystemCommands } from './builtins/system.js';
 export { processMessage } from './processor.js';
 export type { CommandProcessorDeps } from './processor.js';
 
+// ACP Commands
+import { handleAcpCommand } from './acp.js';
+
 /**
  * Initialize the command system with all built-in commands
  */
@@ -73,3 +76,8 @@ export function initializeCommands(): void {
   registerModelCommands();
   registerSystemCommands();
 }
+
+/**
+ * Handle ACP commands
+ */
+export { handleAcpCommand };

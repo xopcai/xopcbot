@@ -40,7 +40,7 @@ import { createTypingController } from './typing.js';
 import { loadBootstrapFiles, extractTextContent, type BootstrapFile } from './helpers.js';
 import { SessionTracker } from './session-tracker.js';
 import { ModelManager } from './models/index.js';
-import { _processMessage, initializeCommands, type _CommandProcessorDeps } from '../commands/index.js';
+import { processMessage, initializeCommands, type CommandProcessorDeps } from '../commands/index.js';
 import { getModelsByProvider, getProviderDisplayName, isProviderConfigured, getAllProviders } from '../providers/index.js';
 
 const log = createLogger('AgentService');
@@ -906,7 +906,7 @@ export class AgentService {
       bus: this.bus,
       sessionStore: this.sessionStore,
       
-      replyHandler: async (text: string, _options?) => {
+      replyHandler: async (text: string, options?) => {
         await this.bus.publishOutbound({
           channel: context.channel,
           chat_id: context.chatId,

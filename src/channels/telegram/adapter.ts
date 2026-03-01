@@ -84,7 +84,7 @@ export class TelegramAdapter implements ChannelAdapter {
     // Handle photos
     if (message.photo?.length) {
       attachments = attachments || [];
-      const photo = message.photo[message.photo.length - 1];
+      const _photo = message.photo[message.photo.length - 1];
       attachments.push({
         type: 'photo',
         mimeType: 'image/jpeg',

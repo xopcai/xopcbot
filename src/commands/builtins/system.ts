@@ -17,7 +17,7 @@ const helpCommand: CommandDefinition = {
   description: 'Show available commands',
   category: 'system',
   scope: ['global', 'private', 'group'],
-  handler: async (ctx: CommandContext) => {
+  handler: async (_ctx: CommandContext) => {
     const allCommands = commandRegistry.list();
 
     // Group by category
@@ -53,7 +53,7 @@ const startCommand: CommandDefinition = {
   description: 'Show welcome message',
   category: 'system',
   scope: ['global', 'private', 'group'],
-  handler: async (ctx: CommandContext) => {
+  handler: async (_ctx: CommandContext) => {
     const content =
       '👋 *Welcome to xopcbot!*\n\n' +
       'I am your AI assistant. Here\'s what I can do:\n\n' +

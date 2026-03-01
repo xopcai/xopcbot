@@ -9,12 +9,12 @@
  * - Edge cases
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SessionStore } from '../store.js';
 import { WindowConfig, CompactionConfig } from '../agent/memory/index.js';
 import { AgentMessage } from '@mariozechner/pi-agent-core';
 import { join } from 'path';
-import { mkdtemp, rm, writeFile, readFile, readdir, stat } from 'fs/promises';
+import { mkdtemp, rm, _writeFile, _readFile, _readdir, stat } from 'fs/promises';
 import { tmpdir } from 'os';
 
 // Test helper to create a temporary directory

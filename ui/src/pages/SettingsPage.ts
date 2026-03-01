@@ -250,6 +250,20 @@ export class SettingsPage extends LitElement {
                 token: config.gateway?.auth?.token || '',
               },
             },
+            stt: config.stt || {
+              enabled: false,
+              provider: 'alibaba',
+              alibaba: { model: 'paraformer-v1' },
+              openai: { model: 'whisper-1' },
+              fallback: { enabled: true, order: ['alibaba', 'openai'] },
+            },
+            tts: config.tts || {
+              enabled: false,
+              provider: 'openai',
+              trigger: 'auto',
+              alibaba: { model: 'cosyvoice-v1', voice: 'longxiaochun' },
+              openai: { model: 'tts-1', voice: 'alloy' },
+            },
           };
         }
       }
@@ -409,6 +423,8 @@ export class SettingsPage extends LitElement {
           mode: this._settings.gateway.auth?.mode || 'token',
         },
       },
+      stt: this._settings.stt,
+      tts: this._settings.tts,
     };
 
     try {
@@ -1087,6 +1103,17 @@ export class SettingsPage extends LitElement {
       ></voice-config-section>
     `;
   }
+
+  private _renderGatewaySection() {
+    return html`
+      <div class="settings-section">
+        <h3 class="section-title">Gateway Configuration</h3>
+        <div class="section-content">
+          <!-- Gateway Token -->
+          <div class="field-group">
+            <div class="field-header">
+              <label class="field-label">Access Token</label>
+            </div>
             <div class="input-with-actions">
               <input
                 class="text-input"

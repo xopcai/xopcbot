@@ -370,7 +370,7 @@ export const ConfigSchema = z.object({
     enabled: false,
     provider: 'alibaba',
     alibaba: {
-      model: 'paraformer-v1',
+      model: 'paraformer-v2',
     },
     openai: {
       model: 'whisper-1',
@@ -382,11 +382,11 @@ export const ConfigSchema = z.object({
   },
   tts: {
     enabled: false,
-    provider: 'openai',
+    provider: 'alibaba',
     trigger: 'auto',
     alibaba: {
-      model: 'cosyvoice-v1',
-      voice: 'longxiaochun',
+      model: 'qwen3-tts-flash',
+      voice: 'Cherry',
     },
     openai: {
       model: 'tts-1',

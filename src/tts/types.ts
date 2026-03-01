@@ -18,6 +18,8 @@ export interface TTSResult {
   format: string;
   /** Duration in seconds (if available) */
   duration?: number;
+  /** Provider that generated the speech */
+  provider: string;
 }
 
 export interface TTSProvider {

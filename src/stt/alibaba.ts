@@ -69,11 +69,11 @@ export class AlibabaProvider implements STTProvider {
   name = 'alibaba';
   private apiKey: string;
   private model: string;
-  private baseUrl = 'https://dashscope.aliyuncs.com/api/v1';
+  private baseUrl = 'https://dashscope.aliyuncs.com/api/v1/services/audio/asr/transcription';
 
   constructor(config: AlibabaConfig) {
     this.apiKey = config.apiKey;
-    this.model = config.model || 'paraformer-v1';
+    this.model = config.model || 'paraformer-v2';
   }
 
   isConfigured(): boolean {
@@ -84,14 +84,10 @@ export class AlibabaProvider implements STTProvider {
     const startTime = Date.now();
     
     try {
-      // Step 1: Upload audio to get a URL
-      // For now, we use a data URL approach or require the caller to provide a URL
-      // Since Alibaba doesn't support direct buffer upload, we need to either:
-      // 1. Use a temporary URL (if we have a way to serve it)
-      // 2. Upload to OSS first
-      // For simplicity, we'll create a data URL and hope it works
-      
+      // Alibaba Paraformer supports: wav, mp3, wma, ogg, aac, flac
+      // Convert OGG to WAV for better compatibility if needed
       const base64Audio = audioBuffer.toString('base64');
+      // Use audio/ogg directly since Paraformer supports it
       const dataUrl = `data:audio/ogg;base64,${base64Audio}`;
       
       log.debug({ 
@@ -100,10 +96,10 @@ export class AlibabaProvider implements STTProvider {
         language: options?.language 
       }, 'Sending to Alibaba Paraformer');
 
-      // Step 2: Submit async task
+      // Step 1: Submit async task
       const taskId = await this.submitTask(dataUrl, options);
       
-      // Step 3: Wait for completion
+      // Step 2: Wait for completion
       const result = await this.waitForCompletion(taskId);
       
       const duration = (Date.now() - startTime) / 1000;
@@ -121,17 +117,23 @@ export class AlibabaProvider implements STTProvider {
         language: options?.language,
       };
     } catch (error) {
-      log.error({ error }, 'Alibaba transcription failed');
-      throw new Error(`Alibaba STT failed: ${error instanceof Error ? error.message : String(error)}`);
+      const errorMsg = error instanceof Error ? `${error.message} (${error.stack})` : String(error);
+      log.error({ 
+        error: errorMsg,
+        bufferSize: audioBuffer.length,
+        model: this.model 
+      }, 'Alibaba transcription failed');
+      throw new Error(`Alibaba STT failed: ${errorMsg}`);
     }
   }
 
   private async submitTask(audioUrl: string, options?: STTOptions): Promise<string> {
-    const response = await fetch(`${this.baseUrl}/tasks`, {
+    const response = await fetch(this.baseUrl, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.apiKey}`,
         'Content-Type': 'application/json',
+        'X-DashScope-Async': 'enable',
       },
       body: JSON.stringify({
         model: this.model,
@@ -145,17 +147,19 @@ export class AlibabaProvider implements STTProvider {
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to submit task: ${response.status} ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`Failed to submit task: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
-    const data: TaskResponse = await response.json();
-    
+    const data = await response.json() as TaskResponse;
+
     if (data.code) {
       throw new Error(`API Error: ${data.code} - ${data.message}`);
     }
 
     if (!data.output?.task_id) {
-      throw new Error('No task_id returned from API');
+      log.error({ response: data }, 'Alibaba STT API response missing task_id');
+      throw new Error(`No task_id returned from API: ${JSON.stringify(data)}`);
     }
 
     log.debug({ taskId: data.output.task_id }, 'Task submitted');
@@ -165,19 +169,21 @@ export class AlibabaProvider implements STTProvider {
   private async waitForCompletion(taskId: string, maxWaitMs = 60000): Promise<{ text: string }> {
     const startTime = Date.now();
     const pollInterval = 1000; // Poll every second
-    
+    const statusUrl = `https://dashscope.aliyuncs.com/api/v1/tasks/${taskId}`;
+
     while (Date.now() - startTime < maxWaitMs) {
-      const response = await fetch(`${this.baseUrl}/tasks/${taskId}`, {
+      const response = await fetch(statusUrl, {
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
         },
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to fetch task status: ${response.status}`);
+        const errorText = await response.text();
+        throw new Error(`Failed to fetch task status: ${response.status} ${response.statusText} - ${errorText}`);
       }
 
-      const data: FetchResponse = await response.json();
+      const data = await response.json() as FetchResponse;
       const status = data.output?.task_status;
 
       if (status === 'SUCCEEDED') {

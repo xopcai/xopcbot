@@ -38,8 +38,57 @@ import type { Config } from '../../config/index.js';
 import { createTelegramCommandHandler } from './command-handler.js';
 import { transcribe, isSTTAvailable } from '../../stt/index.js';
 import { speak, isTTSAvailable } from '../../tts/index.js';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import { writeFile, unlink } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
 
 const log = createLogger('TelegramPlugin');
+const execAsync = promisify(exec);
+
+/**
+ * Compress audio buffer using ffmpeg (wav -> opus)
+ * Returns original buffer if compression fails
+ */
+async function compressAudio(audioBuffer: Buffer, inputFormat: string): Promise<{ buffer: Buffer; format: string }> {
+  if (inputFormat !== 'wav') {
+    return { buffer: audioBuffer, format: inputFormat };
+  }
+
+  const tempDir = tmpdir();
+  const inputPath = join(tempDir, `input_${Date.now()}.wav`);
+  const outputPath = join(tempDir, `output_${Date.now()}.opus`);
+
+  try {
+    // Write input file
+    await writeFile(inputPath, audioBuffer);
+
+    // Compress using ffmpeg
+    await execAsync(`ffmpeg -i "${inputPath}" -c:a libopus -b:a 24k -vbr on "${outputPath}" -y`);
+
+    // Read output file
+    const { readFile } = await import('fs/promises');
+    const compressedBuffer = await readFile(outputPath);
+
+    log.info({
+      originalSize: audioBuffer.length,
+      compressedSize: compressedBuffer.length,
+      ratio: (compressedBuffer.length / audioBuffer.length * 100).toFixed(1) + '%'
+    }, 'Audio compressed successfully');
+
+    return { buffer: compressedBuffer, format: 'opus' };
+  } catch (error) {
+    log.warn({ error, inputFormat }, 'Audio compression failed, using original');
+    return { buffer: audioBuffer, format: inputFormat };
+  } finally {
+    // Cleanup temp files
+    try {
+      await unlink(inputPath).catch(() => {});
+      await unlink(outputPath).catch(() => {});
+    } catch {}
+  }
+}
 
 // ============================================
 // MIME Type Helper
@@ -331,14 +380,25 @@ function createMessageProcessor(deps: MessageProcessorDeps) {
               transcribedText = '[语音超过1分钟，不支持转文字]';
             } else {
               try {
+                log.info({ 
+                  provider: config.stt.provider,
+                  bufferSize: buffer.byteLength,
+                  duration: voiceDuration 
+                }, 'Starting STT transcription');
+                
                 const sttResult = await transcribe(Buffer.from(buffer), config.stt, {
                   language: config.stt.provider === 'alibaba' ? 'zh' : undefined,
                 });
                 transcribedText = sttResult.text;
                 log.info({ provider: sttResult.provider, textLength: transcribedText.length }, 'Voice transcribed');
               } catch (sttError) {
-                log.error({ error: sttError }, 'STT transcription failed');
-                transcribedText = '[语音转文字失败]';
+                const errorMsg = sttError instanceof Error ? sttError.message : String(sttError);
+                log.error({ 
+                  error: errorMsg,
+                  provider: config.stt.provider,
+                  bufferSize: buffer.byteLength 
+                }, 'STT transcription failed');
+                transcribedText = `[语音转文字失败：${errorMsg}]`;
               }
             }
           }
@@ -796,18 +856,30 @@ export class TelegramChannelPlugin implements ChannelPlugin {
       } else if (options.tts && this.config?.tts && isTTSAvailable(this.config.tts)) {
         // TTS: Generate voice message
         log.info({ chatId, contentLength: content?.length }, 'Generating TTS voice message');
-        
+
         try {
           const ttsResult = await speak(content || '', this.config.tts);
-          const file = new InputFile(Buffer.from(ttsResult.audio), 'voice.opus');
-          
+
+          // Compress audio if it's wav format (to reduce file size for Telegram)
+          const { buffer: compressedAudio, format: compressedFormat } = await compressAudio(
+            Buffer.from(ttsResult.audio),
+            ttsResult.format
+          );
+
+          const file = new InputFile(compressedAudio, `voice.${compressedFormat}`);
+
           const sendOptions: any = {};
           if (threadId) sendOptions.message_thread_id = parseInt(threadId, 10);
           if (replyToMessageId) sendOptions.reply_to_message_id = parseInt(replyToMessageId, 10);
           if (silent) sendOptions.disable_notification = true;
 
-          sentMessageId = (await bot.api.sendVoice(chatId, file, sendOptions)).message_id;
-          log.info({ chatId, messageId: sentMessageId, provider: ttsResult.provider }, 'TTS voice message sent');
+          // Use sendVoice for opus, sendAudio for other formats
+          if (compressedFormat === 'opus') {
+            sentMessageId = (await bot.api.sendVoice(chatId, file, sendOptions)).message_id;
+          } else {
+            sentMessageId = (await bot.api.sendAudio(chatId, file, sendOptions)).message_id;
+          }
+          log.info({ chatId, messageId: sentMessageId, provider: ttsResult.provider, format: compressedFormat }, 'TTS voice message sent');
         } catch (ttsError) {
           log.error({ error: ttsError }, 'TTS generation failed, falling back to text');
           // Fallback to text message

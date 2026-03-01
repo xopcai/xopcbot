@@ -67,6 +67,7 @@ export class OpenAIProvider implements TTSProvider {
         audio: buffer,
         format: 'opus',
         duration,
+        provider: 'openai',
       };
     } catch (error) {
       log.error({ error, textLength: limitedText.length }, 'OpenAI TTS failed');

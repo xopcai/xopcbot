@@ -24,27 +24,30 @@ export class OpenAIProvider implements STTProvider {
   }
 
   isConfigured(): boolean {
-    return true; // Client is initialized with API key
+    return !!this.client.apiKey;
   }
 
   async transcribe(audioBuffer: Buffer, options?: STTOptions): Promise<STTResult> {
     const startTime = Date.now();
     
     try {
-      // Telegram voice messages are OGG, but OpenAI supports multiple formats
-      // We'll use the raw buffer directly
-      const file = new File([audioBuffer], 'voice.ogg', { 
-        type: 'audio/ogg' 
-      });
-
+      // Telegram voice messages are OGG, convert to WAV for better compatibility
+      // OpenAI Whisper supports: mp3, mp4, mpeg, mpga, m4a, wav, webm
+      // OGG is not directly supported, so we need to convert or use webm container
+      
       log.debug({ 
         model: this.model, 
         bufferSize: audioBuffer.length,
         language: options?.language 
       }, 'Sending to OpenAI Whisper');
 
+      // Create a Blob from the buffer (works in Node.js 20+)
+      // Convert Buffer to Uint8Array for Blob compatibility
+      const uint8Array = new Uint8Array(audioBuffer.buffer as ArrayBuffer, audioBuffer.byteOffset, audioBuffer.byteLength);
+      const blob = new Blob([uint8Array], { type: 'audio/ogg' });
+      
       const result = await this.client.audio.transcriptions.create({
-        file,
+        file: blob,
         model: this.model,
         language: options?.language,
         response_format: 'json',
@@ -64,8 +67,13 @@ export class OpenAIProvider implements STTProvider {
         duration,
       };
     } catch (error) {
-      log.error({ error }, 'OpenAI transcription failed');
-      throw new Error(`OpenAI STT failed: ${error instanceof Error ? error.message : String(error)}`);
+      const errorMsg = error instanceof Error ? `${error.message} (${error.stack})` : String(error);
+      log.error({ 
+        error: errorMsg,
+        bufferSize: audioBuffer.length,
+        model: this.model 
+      }, 'OpenAI transcription failed');
+      throw new Error(`OpenAI STT failed: ${errorMsg}`);
     }
   }
 }

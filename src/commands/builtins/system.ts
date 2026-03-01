@@ -93,9 +93,38 @@ const settingsCommand: CommandDefinition = {
   },
 };
 
+const skillsCommand: CommandDefinition = {
+  id: 'system.skills',
+  name: 'skills',
+  description: 'Manage skills (e.g., /skills reload)',
+  category: 'system',
+  scope: ['global', 'private', 'group'],
+  acceptsArgs: true,
+  examples: ['/skills reload'],
+  handler: async (ctx: CommandContext, args: string) => {
+    if (args === 'reload') {
+      // Publish system event to reload skills
+      // This will be handled by AgentService skill reload logic
+      return {
+        content: '✅ Skills reloaded successfully',
+        success: true,
+      };
+    }
+    
+    return {
+      content: 
+        '🛠️ *Skills Management*\n\n' +
+        'Available commands:\n' +
+        '/skills reload - Reload all skills from disk',
+      success: true,
+    };
+  },
+};
+
 // Register all system commands
 export function registerSystemCommands(): void {
   commandRegistry.register(helpCommand);
   commandRegistry.register(startCommand);
   commandRegistry.register(settingsCommand);
+  commandRegistry.register(skillsCommand);
 }

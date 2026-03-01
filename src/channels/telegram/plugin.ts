@@ -614,21 +614,8 @@ export class TelegramChannelPlugin implements ChannelPlugin {
         await commandHandler!.handleModels(ctx);
       });
       
-      bot.command('usage', async (ctx) => {
-        await commandHandler!.handleUsage(ctx);
-      });
-      
       bot.command('cleanup', async (ctx) => {
         await commandHandler!.handleCleanup(ctx);
-      });
-
-      bot.command('new', async (ctx) => {
-        await commandHandler!.handleNew(ctx);
-      });
-
-      bot.command('skills', async (ctx) => {
-        const args = ctx.message?.text?.replace('/skills', '').trim();
-        await commandHandler!.handleSkills(ctx, args || undefined);
       });
 
       bot.command('start', async (ctx) => {

@@ -243,65 +243,6 @@ export function createTelegramCommandHandler(deps: TelegramCommandHandlerDeps) {
     await ctx.answerCallbackQuery();
   };
 
-  // ========== Legacy Handlers (to be removed after full migration) ==========
-  
-  /**
-   * These handlers send system messages that will be processed by the unified command system
-   */
-  const handleNew = async (ctx: Context): Promise<void> => {
-    const chatId = String(ctx.chat?.id);
-    const sessionKey = getSessionKeyFromCtx(ctx);
-
-    await bus.publishInbound({
-      channel: 'system',
-      sender_id: 'telegram:new',
-      chat_id: chatId,
-      content: '/new',
-      metadata: { sessionKey },
-    });
-
-    await ctx.reply('✅ Starting new session...');
-  };
-
-  const handleUsage = async (ctx: Context): Promise<void> => {
-    const chatId = String(ctx.chat?.id);
-    const sessionKey = getSessionKeyFromCtx(ctx);
-
-    await bus.publishInbound({
-      channel: 'system',
-      sender_id: 'telegram:usage',
-      chat_id: chatId,
-      content: '/usage',
-      metadata: { sessionKey },
-    });
-
-    await ctx.reply(
-      '📊 *Token Usage Stats*\n\nFetching usage statistics for this session...',
-      { parse_mode: 'Markdown' }
-    );
-  };
-
-  const handleSkills = async (ctx: Context, args?: string): Promise<void> => {
-    const chatId = String(ctx.chat?.id);
-
-    if (args === 'reload') {
-      await bus.publishInbound({
-        channel: 'system',
-        sender_id: 'telegram:skills',
-        chat_id: chatId,
-        content: '/skills reload',
-      });
-      await ctx.reply('✅ Skills reloaded successfully');
-    } else {
-      await ctx.reply(
-        '🛠️ *Skills Management*\n\n' +
-        'Available commands:\n' +
-        '/skills reload - Reload all skills from disk',
-        { parse_mode: 'Markdown' }
-      );
-    }
-  };
-
   return {
     // Command handlers
     handleStart,
@@ -313,10 +254,7 @@ export function createTelegramCommandHandler(deps: TelegramCommandHandlerDeps) {
     handleShowProviders,
     handleCleanupConfirm,
     handleCancel,
-    // Legacy handlers (to be removed)
-    handleNew,
-    handleUsage,
-    handleSkills,
+    // Helpers
     getAvailableProviders,
   };
 }

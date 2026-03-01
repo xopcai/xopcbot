@@ -227,6 +227,23 @@ export const ModelsDevConfigSchema = z.object({
 });
 
 // ============================================
+// ACP (Agent Client Protocol) Config
+// ============================================
+
+export const AcpConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  backend: z.enum(['acpx', 'direct']).default('acpx'),
+  defaultAgent: z.string().default('opencode'),
+  allowedAgents: z.array(z.string()).default(['claude', 'opencode', 'codex']),
+  maxConcurrentSessions: z.number().optional(),
+  idleTtlMs: z.number().optional(),
+  dispatch: z.object({
+    enabled: z.boolean().default(false),
+    autoSpawn: z.boolean().default(false),
+  }).optional(),
+}).optional();
+
+// ============================================
 // STT (Speech-to-Text) Config
 // ============================================
 
@@ -294,6 +311,7 @@ export const ConfigSchema = z.object({
   providers: ProvidersConfigSchema,
   stt: STTConfigSchema.optional(),
   tts: TTSConfigSchema.optional(),
+  acp: AcpConfigSchema,
 }).default({
   agents: {
     defaults: {
@@ -402,6 +420,7 @@ export type TelegramConfig = z.infer<typeof TelegramConfigSchema>;
 export type WhatsAppConfig = z.infer<typeof WhatsAppConfigSchema>;
 export type STTConfig = z.infer<typeof STTConfigSchema>;
 export type TTSConfig = z.infer<typeof TTSConfigSchema>;
+export type AcpConfig = z.infer<typeof AcpConfigSchema>;
 
 // ============================================
 // Helper Functions

@@ -114,6 +114,10 @@ export class SettingsPage extends LitElement {
   // Gateway token UI state
   @state() private _showGatewayToken: boolean = false;
   @state() private _copiedGatewayToken: boolean = false;
+  // Restart UI state
+  @state() private _isRestarting: boolean = false;
+  @state() private _restartStatus: 'idle' | 'restarting' | 'waiting' | 'reconnecting' | 'success' | 'error' = 'idle';
+  @state() private _restartError: string = '';
 
   @state() private _settings: SettingsData = {
     model: '',
@@ -373,6 +377,92 @@ export class SettingsPage extends LitElement {
     } catch (err) {
       console.error('Failed to copy:', err);
     }
+  }
+
+  /**
+   * Restart the gateway server
+   */
+  private async _restartGateway() {
+    if (this._isRestarting) return;
+
+    // Confirm before restarting
+    if (!confirm('Are you sure you want to restart the gateway? The service will be briefly unavailable.')) {
+      return;
+    }
+
+    this._isRestarting = true;
+    this._restartStatus = 'restarting';
+    this._restartError = '';
+    const token = this.config?.token;
+
+    try {
+      // Call the restart API
+      const response = await fetch(`${window.location.origin}/api/gateway/restart`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'Failed to restart gateway');
+      }
+
+      // API call succeeded, now wait for service to come back
+      this._restartStatus = 'waiting';
+      
+      // Poll health endpoint until service is back
+      await this._waitForGatewayReady();
+
+    } catch (err) {
+      console.error('Failed to restart gateway:', err);
+      this._restartStatus = 'error';
+      this._restartError = err instanceof Error ? err.message : 'Unknown error';
+    } finally {
+      this._isRestarting = false;
+    }
+  }
+
+  /**
+   * Wait for gateway to become ready by polling the health endpoint
+   */
+  private async _waitForGatewayReady(): Promise<void> {
+    const maxAttempts = 30; // 30 seconds timeout
+    const pollInterval = 1000; // 1 second
+    const token = this.config?.token;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+
+      try {
+        const response = await fetch(`${window.location.origin}/health`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+
+        if (response.ok) {
+          this._restartStatus = 'reconnecting';
+          
+          // Try to reconnect SSE (the chat component will handle this automatically)
+          // Dispatch event to notify components to reconnect
+          window.dispatchEvent(new CustomEvent('gateway-restarted'));
+          
+          this._restartStatus = 'success';
+          
+          // Reset status after showing success
+          setTimeout(() => {
+            this._restartStatus = 'idle';
+          }, 3000);
+          
+          return;
+        }
+      } catch {
+        // Service not ready yet, continue polling
+      }
+    }
+
+    // Timeout reached
+    this._restartStatus = 'error';
+    this._restartError = 'Gateway did not come back online within 30 seconds. Please refresh the page manually.';
   }
 
   private async _saveSettings() {

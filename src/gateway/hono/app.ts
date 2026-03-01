@@ -193,6 +193,37 @@ export function createHonoApp(config: HonoAppConfig): Hono {
     return c.json({ ok: true, payload: result });
   });
 
+  // POST /api/gateway/restart - Restart the gateway
+  authenticated.post('/api/gateway/restart', async (c) => {
+    log.info('Received restart request via API');
+    
+    try {
+      const result = await service.restart();
+      
+      if (result.restarting) {
+        return c.json({ 
+          ok: true, 
+          payload: { 
+            restarting: true, 
+            message: result.message 
+          } 
+        });
+      } else {
+        return c.json({ 
+          ok: false, 
+          error: result.message 
+        }, 500);
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      log.error({ err: errorMessage }, 'Failed to restart gateway');
+      return c.json({ 
+        ok: false, 
+        error: `Failed to restart: ${errorMessage}` 
+      }, 500);
+    }
+  });
+
   // GET /api/config
   authenticated.get('/api/config', (c) => {
     const config = service.currentConfig;

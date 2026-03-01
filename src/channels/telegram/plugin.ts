@@ -424,7 +424,21 @@ function createMessageProcessor(deps: MessageProcessorDeps) {
       ? transcribedText + (cleanContent ? '\n\n' + cleanContent : '')
       : cleanContent;
 
-    log.info({ accountId, chatId, senderId, isGroup, threadId, sessionKey, contentLength: finalContent.length, attachmentCount: attachments.length, hasVoice: !!transcribedText }, 'Processing Telegram message');
+    // Check if it's a command
+    const isCommand = cleanContent.startsWith('/');
+    
+    log.info({ 
+      accountId, 
+      chatId, 
+      senderId, 
+      isGroup, 
+      threadId, 
+      sessionKey, 
+      contentLength: finalContent.length, 
+      attachmentCount: attachments.length, 
+      hasVoice: !!transcribedText,
+      isCommand 
+    }, 'Processing Telegram message');
 
     await bus.publishInbound({
       channel: 'telegram',
@@ -435,6 +449,7 @@ function createMessageProcessor(deps: MessageProcessorDeps) {
         sessionKey,
         messageId: String(message.message_id),
         isGroup,
+        isCommand,
         threadId: threadId ? String(threadId) : undefined,
         media: media.length > 0 ? media : undefined,
         transcribedVoice: !!transcribedText || undefined,

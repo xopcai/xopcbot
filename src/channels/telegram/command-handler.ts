@@ -61,7 +61,10 @@ export function createTelegramCommandHandler(deps: TelegramCommandHandlerDeps) {
     }));
   };
 
-  const buildSessionKey = (ctx: Context): string => {
+  // ========== Helper Functions ==========
+
+  // Helper to get sessionKey from Telegram context
+  const getSessionKeyFromCtx = (ctx: Context): string => {
     const chatId = String(ctx.chat?.id);
     const senderId = String(ctx.from?.id);
     const isGroup = ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup';
@@ -153,7 +156,7 @@ export function createTelegramCommandHandler(deps: TelegramCommandHandlerDeps) {
 
   const handleProviderSelect = async (ctx: Context, providerId: string): Promise<void> => {
     try {
-      const sessionKey = buildSessionKey(ctx);
+      const sessionKey = getSessionKeyFromCtx(ctx);
       const modelConfig = config.agents?.defaults?.model;
       const defaultModel = typeof modelConfig === 'string' ? modelConfig : modelConfig?.primary || DEFAULT_MODEL;
       const currentModel = getSessionModel(sessionKey) || defaultModel;
@@ -182,7 +185,7 @@ export function createTelegramCommandHandler(deps: TelegramCommandHandlerDeps) {
 
   const handleModelSelect = async (ctx: Context, modelId: string): Promise<void> => {
     try {
-      const sessionKey = buildSessionKey(ctx);
+      const sessionKey = getSessionKeyFromCtx(ctx);
       setSessionModel(sessionKey, modelId);
 
       const modelName = modelId.split('/').pop() || modelId;
@@ -247,7 +250,7 @@ export function createTelegramCommandHandler(deps: TelegramCommandHandlerDeps) {
    */
   const handleNew = async (ctx: Context): Promise<void> => {
     const chatId = String(ctx.chat?.id);
-    const sessionKey = buildSessionKey(ctx);
+    const sessionKey = getSessionKeyFromCtx(ctx);
 
     await bus.publishInbound({
       channel: 'system',
@@ -262,7 +265,7 @@ export function createTelegramCommandHandler(deps: TelegramCommandHandlerDeps) {
 
   const handleUsage = async (ctx: Context): Promise<void> => {
     const chatId = String(ctx.chat?.id);
-    const sessionKey = buildSessionKey(ctx);
+    const sessionKey = getSessionKeyFromCtx(ctx);
 
     await bus.publishInbound({
       channel: 'system',

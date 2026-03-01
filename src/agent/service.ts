@@ -605,9 +605,39 @@ export class AgentService {
   }
 
   private async handleSystemMessage(msg: InboundMessage): Promise<void> {
-    log.info({ senderId: msg.sender_id }, 'Processing system message');
+    log.info({ senderId: msg.sender_id, content: msg.content }, 'Processing system message');
 
-    // Handle Telegram command requests
+    // Check if this is a channel command request (e.g., from Telegram /new, /usage handlers)
+    // These commands are sent via system channel but should be handled by the unified command system
+    if (msg.metadata?.sessionKey && msg.content.startsWith('/')) {
+      const sessionKey = msg.metadata.sessionKey as string;
+      const parsed = this.parseCommand(msg.content);
+      
+      if (parsed) {
+        // Use parseSessionKey to extract channel info from sessionKey
+        const { parseSessionKey } = await import('../commands/session-key.js');
+        const sessionInfo = parseSessionKey(sessionKey);
+        const channel = sessionInfo.source;
+        
+        // Use unified command system to handle the command
+        const isHandled = await this.executeCommand(parsed.command, parsed.args, {
+          sessionKey,
+          channel,
+          chatId: sessionInfo.chatId,
+          senderId: msg.sender_id,
+          isGroup: (msg.metadata?.isGroup as boolean) || false,
+        });
+
+        if (isHandled) {
+          return; // Command was handled by the command system
+        }
+      }
+    }
+
+    // Legacy system messages that need AI processing
+    // (messages that don't start with / or weren't handled by command system)
+    
+    // Handle Telegram /usage explicitly (for backward compatibility)
     if (msg.content === '/usage' && msg.sender_id === 'telegram:usage') {
       const sessionKey = (msg.metadata?.sessionKey as string) || `telegram:${msg.chat_id}`;
       const usage = this.sessionTracker.getUsage(sessionKey);

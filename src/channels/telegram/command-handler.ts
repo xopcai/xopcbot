@@ -68,7 +68,7 @@ export function createTelegramCommandHandler(deps: TelegramCommandHandlerDeps) {
     const chatId = String(ctx.chat?.id);
     const senderId = String(ctx.from?.id);
     const isGroup = ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup';
-    const threadId = (ctx.message as any)?.message_thread_id;
+    const threadId = (ctx.message as { message_thread_id?: number })?.message_thread_id;
 
     return generateSessionKey({
       source: 'telegram',

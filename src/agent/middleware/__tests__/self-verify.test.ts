@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { SelfVerifyMiddleware, type SelfVerifyConfig } from '../self-verify.js';
+import { SelfVerifyMiddleware } from '../self-verify.js';
 
 describe('SelfVerifyMiddleware', () => {
   let middleware: SelfVerifyMiddleware;

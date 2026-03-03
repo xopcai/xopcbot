@@ -10,6 +10,7 @@
  */
 
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
+import type { ToolResultMessage, Message } from '@mariozechner/pi-ai';
 import { createLogger } from '../../utils/logger.js';
 
 const log = createLogger('SummaryGenerator');
@@ -158,7 +159,7 @@ export function generateStructuredSummary(
     if (hasToolCalls(msg)) {
       lastAssistantMessage = msg;
       
-      const toolCalls = (msg as any).toolCalls;
+      const toolCalls = (msg as Message & { toolCalls?: Array<{ name: string; args?: Record<string, unknown> }> }).toolCalls;
       if (toolCalls && toolCalls.length > 0) {
         summary.totalToolCalls += toolCalls.length;
 
@@ -167,7 +168,7 @@ export function generateStructuredSummary(
             toolName: call.name,
             operation: categorizeToolOperation(call.name),
             success: true, // Will be updated from tool_result
-            filePath: call.args?.path || call.args?.file_path || call.args?.filePath,
+            filePath: String(call.args?.path || call.args?.file_path || call.args?.filePath || ''),
             timestamp: msg.timestamp,
           };
           summary.toolCalls.push(toolSummary);
@@ -181,8 +182,8 @@ export function generateStructuredSummary(
 
     // Extract tool results to determine success/failure
     if (isToolResult(msg)) {
-      const toolMsg = msg as any;
-      const toolName = toolMsg.name;
+      const toolMsg = msg as ToolResultMessage;
+      const toolName = toolMsg.toolName;
       
       // Find the corresponding tool call and update success status
       const toolCall = summary.toolCalls

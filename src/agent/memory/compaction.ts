@@ -1,6 +1,6 @@
 // Session Compaction - Compress old messages using dual-strategy approach
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
-import { complete, type Model, type Api } from '@mariozechner/pi-ai';
+import { complete, type Model, type Api, type UserMessage } from '@mariozechner/pi-ai';
 import { generateStructuredSummary, formatSummaryAsText, type ConversationSummary } from './summary-generator.js';
 
 export interface CompactionResult {
@@ -55,24 +55,6 @@ function estimateMessageTokens(msg: AgentMessage): number {
   }
   
   return estimateTokens(text) + 10;
-}
-
-/**
- * Count conversation turns (user+assistant pairs)
- * Reserved for future use
- */
-function _countTurns(messages: AgentMessage[]): number {
-  let turns = 0;
-  let lastRole: string | null = null;
-  
-  for (const msg of messages) {
-    if (msg.role === 'user' && lastRole !== 'user') {
-      turns++;
-    }
-    lastRole = msg.role;
-  }
-  
-  return turns;
 }
 
 /**
@@ -245,6 +227,7 @@ export class SessionCompactor {
 
   /**
    * LLM-based abstractive summary (natural language summary)
+   * @timeout 30 seconds
    */
   private async llmAbstractiveSummary(messages: AgentMessage[]): Promise<string> {
     if (!this.model) {
@@ -262,18 +245,33 @@ ${conversation}
 
 Summary:`;
 
-    const result = await complete(this.model, { 
-      messages: [{ role: 'user', content: prompt }] as any 
-    }, {
-      maxTokens: this.config.summaryMaxTokens,
-      temperature: 0.3,
-    });
+    // Create abort controller for timeout (30 seconds)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-    const text = Array.isArray(result.content)
-      ? result.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('')
-      : '';
+    try {
+      const summaryMessage: UserMessage = { role: 'user', content: prompt, timestamp: Date.now() };
+      const result = await complete(this.model, { 
+        messages: [summaryMessage]
+      }, {
+        maxTokens: this.config.summaryMaxTokens,
+        temperature: 0.3,
+        signal: controller.signal as any,
+      });
 
-    return text.trim();
+      const text = Array.isArray(result.content)
+        ? result.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('')
+        : '';
+
+      return text.trim();
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new Error('LLM summarization timed out after 30 seconds');
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
   /**
@@ -285,7 +283,7 @@ Summary:`;
         const role = m.role;
         const content = typeof m.content === 'string' 
           ? m.content 
-          : (m.content as any[]).filter(c => c.type === 'text').map(c => c.text || '').join('\n');
+          : (m.content as Array<{ type: string; text?: string }>).filter(c => c.type === 'text').map(c => c.text || '').join('\n');
         return `[${role}]: ${content}`;
       })
       .join('\n\n');

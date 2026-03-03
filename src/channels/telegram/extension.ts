@@ -49,6 +49,22 @@ import { join } from 'path';
 const log = createLogger('TelegramExtension');
 const execAsync = promisify(exec);
 
+// =============================================================================
+// Constants
+// =============================================================================
+
+/** Maximum voice message duration in seconds for STT */
+const STT_MAX_VOICE_DURATION_SECONDS = 60;
+
+/** Maximum message chunk size (leaving margin for Telegram's 4096 limit) */
+const MESSAGE_CHUNK_SIZE = 3800;
+
+/** TTS maximum retry attempts */
+const TTS_MAX_RETRIES = 2;
+
+/** Retry delay base in milliseconds for exponential backoff */
+const TTS_RETRY_DELAY_MS = 1000;
+
 // Regex to detect Telegram HTML parse errors
 const TELEGRAM_PARSE_ERR_RE = /can't parse entities|parse entities|find end of the entity|Unmatched end tag/i;
 
@@ -235,17 +251,24 @@ function createMessageProcessor(deps: MessageProcessorDeps) {
   const { bus, config, accountManager, _commandHandler } = deps;
   
   const messageQueues = new Map<string, QueuedMessage[]>();
-  const processingChats = new Set<string>();
+  const processingLocks = new Map<string, Promise<void>>();
 
   const getChatKey = (accountId: string, chatId: string): string => `${accountId}:${chatId}`;
 
-  const processNextMessage = async (chatKey: string) => {
-    if (processingChats.has(chatKey)) return;
+  const processNextMessage = async (chatKey: string): Promise<void> => {
+    // Check if already processing - use promise-based lock to prevent race conditions
+    if (processingLocks.has(chatKey)) return;
 
     const queue = messageQueues.get(chatKey);
     if (!queue || queue.length === 0) return;
 
-    processingChats.add(chatKey);
+    // Create a lock promise to prevent concurrent processing
+    let lockResolve: () => void;
+    const lockPromise = new Promise<void>((resolve) => {
+      lockResolve = resolve;
+    });
+    processingLocks.set(chatKey, lockPromise);
+
     const { ctx, accountId, resolve, reject } = queue.shift()!;
 
     try {
@@ -254,7 +277,9 @@ function createMessageProcessor(deps: MessageProcessorDeps) {
     } catch (err) {
       reject(err instanceof Error ? err : new Error(String(err)));
     } finally {
-      processingChats.delete(chatKey);
+      // Release the lock and clean up
+      lockResolve?.();
+      processingLocks.delete(chatKey);
       if (queue.length > 0) {
         processNextMessage(chatKey);
       } else {
@@ -296,7 +321,8 @@ function createMessageProcessor(deps: MessageProcessorDeps) {
     const senderUsername = ctx.from?.username;
     const content = message.text ?? message.caption ?? '';
     const isGroup = ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup';
-    const threadId = (message as any)?.message_thread_id;
+    // Thread ID for forum chats - typed as optional number
+    const threadId = (message as { message_thread_id?: number }).message_thread_id;
 
     const groupConfig = account.groups?.[chatId];
     const topicConfig = threadId ? groupConfig?.topics?.[String(threadId)] : undefined;
@@ -395,9 +421,9 @@ function createMessageProcessor(deps: MessageProcessorDeps) {
           // Handle voice messages with STT
           if (item.type === 'voice' && config?.stt && isSTTAvailable(config.stt)) {
             const voiceDuration = message.voice?.duration || 0;
-            if (voiceDuration > 60) {
-              log.warn({ duration: voiceDuration }, 'Voice message too long (>60s), skipping STT');
-              transcribedText = '[Voice message too long (>60s), STT not supported]';
+            if (voiceDuration > STT_MAX_VOICE_DURATION_SECONDS) {
+              log.warn({ duration: voiceDuration }, `Voice message too long (>${STT_MAX_VOICE_DURATION_SECONDS}s), skipping STT`);
+              transcribedText = `[Voice message too long (>${STT_MAX_VOICE_DURATION_SECONDS}s), STT not supported]`;
             } else {
               try {
                 log.info({ 
@@ -880,7 +906,7 @@ export class TelegramChannelExtension implements ChannelExtension {
         log.info({ chatId, contentLength: content?.length }, 'Generating TTS voice message');
 
         let ttsErrorOccurred = false;
-        const maxRetries = 2;
+        const maxRetries = TTS_MAX_RETRIES;
         
         for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
           try {
@@ -919,8 +945,8 @@ export class TelegramChannelExtension implements ChannelExtension {
                 textLength: content?.length 
               }, `TTS generation failed (attempt ${attempt}/${maxRetries + 1}), retrying...`);
               ttsErrorOccurred = true;
-              // Wait before retry (exponential backoff: 1s, 2s)
-              await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+              // Wait before retry (exponential backoff)
+              await new Promise(resolve => setTimeout(resolve, attempt * TTS_RETRY_DELAY_MS));
             } else {
               log.error({ 
                 error: errorMsg, 
@@ -936,7 +962,7 @@ export class TelegramChannelExtension implements ChannelExtension {
         // Fallback to text message if all TTS attempts failed
         if (ttsErrorOccurred && !sentMessageId) {
           const { html } = formatTelegramMessage(content || '');
-          const chunks = splitTelegramMessage(html, 3800);
+          const chunks = splitTelegramMessage(html, MESSAGE_CHUNK_SIZE);
           
           const sendOptions: any = { parse_mode: 'HTML' };
           if (threadId) sendOptions.message_thread_id = parseInt(threadId, 10);
@@ -962,7 +988,7 @@ export class TelegramChannelExtension implements ChannelExtension {
       } else {
         // Split long messages into chunks (Telegram limit: 4096 chars)
         const { html } = formatTelegramMessage(content || '');
-        const chunks = splitTelegramMessage(html, 3800); // Leave margin for safety
+        const chunks = splitTelegramMessage(html, MESSAGE_CHUNK_SIZE);
 
         const sendOptions: any = { parse_mode: 'HTML' };
         if (threadId) sendOptions.message_thread_id = parseInt(threadId, 10);
@@ -984,7 +1010,7 @@ export class TelegramChannelExtension implements ChannelExtension {
           if (silent) plainSendOptions.disable_notification = true;
 
           // Send with plain text chunks
-          const plainChunks = splitTelegramMessage(content || '', 3800);
+          const plainChunks = splitTelegramMessage(content || '', MESSAGE_CHUNK_SIZE);
           sentMessageId = (await bot.api.sendMessage(chatId, plainChunks[0], plainSendOptions)).message_id;
 
           // Send remaining chunks as replies

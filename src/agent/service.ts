@@ -7,7 +7,7 @@
 
 import { readFileSync } from 'fs';
 import { Agent, type AgentEvent, type AgentMessage } from '@mariozechner/pi-agent-core';
-import type { Model, Api } from '@mariozechner/pi-ai';
+import type { Model, Api, Usage } from '@mariozechner/pi-ai';
 import type { MessageBus, InboundMessage } from '../bus/index.js';
 import type { Config, AgentDefaults } from '../config/schema.js';
 import type { ChannelManager } from '../channels/manager.js';
@@ -20,7 +20,7 @@ import { createLogger } from '../utils/logger.js';
 import { ExtensionRegistryImpl as ExtensionRegistry, ExtensionHookRunner } from '../extensions/index.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import { createTypingController } from './typing.js';
-import { loadBootstrapFiles, extractTextContent, type BootstrapFile } from './helpers.js';
+import { loadBootstrapFiles, extractTextContent, type BootstrapFile, toWorkspaceBootstrapFile } from './helpers.js';
 import { SessionTracker } from './session-tracker.js';
 import { ModelManager } from './models/index.js';
 import { initializeCommands } from '../commands/index.js';
@@ -1238,11 +1238,14 @@ export class AgentService {
       }
     }
 
-    // Cast BootstrapFile[] to WorkspaceBootstrapFile[] for compatibility
+    // Convert BootstrapFile[] to WorkspaceBootstrapFile[] format
+    const workspaceBootstrapFiles = this.bootstrapFiles.map(f => 
+      toWorkspaceBootstrapFile(f, this.config.workspace)
+    );
     const prompt = buildSystemPrompt(
       this.config.workspace,
       {
-        bootstrapFiles: this.bootstrapFiles as any,
+        bootstrapFiles: workspaceBootstrapFiles,
         heartbeatEnabled,
         availableTools: this.skills.map(s => s.name),
         userTimezone,
@@ -1333,7 +1336,7 @@ export class AgentService {
     // Create command context
     const cmdCtx = createCommandContext({
       sessionKey: context.sessionKey,
-      source: context.channel as any,
+      source: context.channel as 'telegram' | 'webui' | 'cli' | 'api' | 'system' | 'gateway',
       channelId: context.channel,
       chatId: context.chatId,
       senderId: context.senderId,
@@ -1394,8 +1397,9 @@ export class AgentService {
 
         for (const msg of messages) {
           if ('usage' in msg && msg.usage) {
-            promptTokens += (msg.usage as any).input || 0;
-            completionTokens += (msg.usage as any).output || 0;
+            const usage = msg.usage as unknown as Usage;
+            promptTokens += usage.input || 0;
+            completionTokens += usage.output || 0;
           }
         }
 

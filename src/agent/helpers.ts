@@ -5,10 +5,11 @@
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { createLogger } from '../utils/logger.js';
+import type { WorkspaceBootstrapFileName } from './workspace.js';
 
 const log = createLogger('AgentHelpers');
 
-const BOOTSTRAP_FILES = [
+const BOOTSTRAP_FILES: WorkspaceBootstrapFileName[] = [
   'SOUL.md',
   'IDENTITY.md',
   'USER.md',
@@ -78,10 +79,28 @@ export function truncateBootstrapContent(content: string, maxChars: number): Tru
 }
 
 export interface BootstrapFile {
-  name: string;
+  name: WorkspaceBootstrapFileName;
   path?: string;
   content: string;
   missing?: boolean;
+}
+
+/**
+ * Convert BootstrapFile to WorkspaceBootstrapFile format
+ * Adds required path field
+ */
+export function toWorkspaceBootstrapFile(file: BootstrapFile, workspace: string): {
+  name: WorkspaceBootstrapFileName;
+  path: string;
+  content?: string;
+  missing: boolean;
+} {
+  return {
+    name: file.name,
+    path: file.path || join(workspace, file.name),
+    content: file.missing ? undefined : file.content,
+    missing: file.missing ?? false,
+  };
 }
 
 /**

@@ -10,7 +10,7 @@
 
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { readFile, stat, access } from 'fs/promises';
+import { readFile, access } from 'fs/promises';
 import { join, extname, basename, resolve, normalize, isAbsolute } from 'path';
 import { createLogger } from '../utils/logger.js';
 
@@ -269,7 +269,7 @@ async function gatherFileStats(
           const lines = content.split('\n').length;
           current.lines += lines;
           totalLines += lines;
-        } catch (error) {
+        } catch {
           // Binary or unreadable file
         }
       }
@@ -293,7 +293,7 @@ async function gatherFileStats(
       totalLines: options.includeLineCounts ? totalLines : undefined,
       extensions,
     };
-  } catch (error) {
+  } catch {
     log.warn({ workspace, error }, 'Failed to gather file stats with git, falling back to basic scan');
 
     // Fallback: basic directory scan
@@ -351,7 +351,7 @@ async function detectTechStack(workspace: string): Promise<TechStack> {
     } else {
       buildTools.add('npm');
     }
-  } catch (error) {
+  } catch {
     log.debug({ workspace, error: (error as Error).message }, 'No package.json found or failed to parse');
   }
 
@@ -374,7 +374,7 @@ async function detectTechStack(workspace: string): Promise<TechStack> {
         languages.add(lang);
       }
     }
-  } catch (error) {
+  } catch {
     // Ignore
   }
 
@@ -405,7 +405,7 @@ async function gatherGitInfo(workspace: string): Promise<{
       branch: branch.trim() || undefined,
       remote: remote.trim() || undefined,
     };
-  } catch (error) {
+  } catch {
     return { hasGit: false };
   }
 }
@@ -423,7 +423,7 @@ async function gatherDocumentation(workspace: string): Promise<ProjectContext['d
         const content = await readFile(join(workspace, file), 'utf-8');
         docs.readme = content.slice(0, 1000); // First 1000 chars
         break;
-      } catch (error) {
+      } catch {
         // Ignore
       }
     }
@@ -433,7 +433,7 @@ async function gatherDocumentation(workspace: string): Promise<ProjectContext['d
     try {
       const content = await readFile(join(workspace, 'CONTRIBUTING.md'), 'utf-8');
       docs.contributing = content.slice(0, 500);
-    } catch (error) {
+    } catch {
       // Ignore
     }
   }
@@ -459,7 +459,7 @@ async function gatherPackageInfo(workspace: string): Promise<ProjectContext['pac
       dependencies: Object.keys(pkg.dependencies || {}),
       devDependencies: Object.keys(pkg.devDependencies || {}),
     };
-  } catch (error) {
+  } catch {
     // Try other package files
     try {
       const content = await readFile(join(workspace, 'Cargo.toml'), 'utf-8');
@@ -473,7 +473,7 @@ async function gatherPackageInfo(workspace: string): Promise<ProjectContext['pac
         dependencies: [],
         devDependencies: [],
       };
-    } catch (error) {
+    } catch {
       return undefined;
     }
   }
@@ -488,7 +488,7 @@ async function detectProjectName(workspace: string): Promise<string> {
     const content = await readFile(join(workspace, 'package.json'), 'utf-8');
     const pkg = JSON.parse(content);
     if (pkg.name) return pkg.name;
-  } catch (error) {
+  } catch {
     // Ignore
   }
 
@@ -497,7 +497,7 @@ async function detectProjectName(workspace: string): Promise<string> {
     const content = await readFile(join(workspace, 'Cargo.toml'), 'utf-8');
     const match = content.match(/name\s*=\s*"([^"]+)"/);
     if (match) return match[1];
-  } catch (error) {
+  } catch {
     // Ignore
   }
 
@@ -512,7 +512,7 @@ async function fileExists(path: string): Promise<boolean> {
   try {
     await access(path);
     return true;
-  } catch (error) {
+  } catch {
     return false;
   }
 }

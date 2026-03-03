@@ -14,10 +14,6 @@
  * ```
  */
 
-import { createLogger } from '../../utils/logger.js';
-
-const log = createLogger('StructuredOutput');
-
 export interface ElementAttributes {
   [key: string]: string | number | boolean | undefined;
 }

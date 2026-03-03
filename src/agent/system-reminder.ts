@@ -5,10 +5,6 @@
  * tool execution are more effective than instructions in System Prompt alone"
  */
 
-import { createLogger } from '../utils/logger.js';
-
-const log = createLogger('SystemReminder');
-
 export interface SystemReminderConfig {
   enabled: boolean;
   reminders: string[];

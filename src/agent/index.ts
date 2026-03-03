@@ -61,6 +61,34 @@ export type { ToolErrorTrackerConfig, ToolFailureRecord } from './tool-error-tra
 export { RequestLimiter } from './request-limiter.js';
 export type { RequestLimiterConfig, RequestLimitResult } from './request-limiter.js';
 
+// Retry and timeout modules (P0 optimizations)
+export { 
+  retryWithBackoff, 
+  retryWithResult, 
+  withRetry, 
+  RetryManager,
+  DEFAULT_RETRY_CONFIG 
+} from './retry.js';
+export type { 
+  RetryConfig, 
+  RetryResult, 
+  RetryStats 
+} from './retry.js';
+
+export { 
+  executeWithTimeout, 
+  executeWithTimeoutResult, 
+  withTimeout, 
+  TimeoutManager,
+  TimeoutError,
+  DEFAULT_TIMEOUT_CONFIG 
+} from './timeout-wrapper.js';
+export type { 
+  TimeoutConfig, 
+  TimeoutResult, 
+  ToolTimeoutConfig 
+} from './timeout-wrapper.js';
+
 // Memory modules
 export { generateStructuredSummary, formatSummaryAsText, createSummaryMessage } from './memory/summary-generator.js';
 export type { ConversationSummary, ToolCallSummary } from './memory/summary-generator.js';

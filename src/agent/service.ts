@@ -29,6 +29,10 @@ import { HookHandler } from './hook-handler.js';
 import { AgentToolsFactory } from './agent-tools-factory.js';
 import { ToolErrorTracker } from './tool-error-tracker.js';
 import { RequestLimiter } from './request-limiter.js';
+import { SystemReminder } from './system-reminder.js';
+import { ToolUsageAnalyzer } from './tool-usage-analyzer.js';
+import { ToolChainTracker } from './tool-chain-tracker.js';
+import { ErrorPatternMatcher } from './error-pattern-matcher.js';
 
 const log = createLogger('AgentService');
 
@@ -82,6 +86,10 @@ export class AgentService {
   private toolsFactory: AgentToolsFactory;
   private errorTracker: ToolErrorTracker;
   private requestLimiter: RequestLimiter;
+  private systemReminder: SystemReminder;
+  private toolUsageAnalyzer: ToolUsageAnalyzer;
+  private toolChainTracker: ToolChainTracker;
+  private errorPatternMatcher: ErrorPatternMatcher;
 
   // Stream handle for current context (for progress updates)
   private currentStreamHandle: {
@@ -230,6 +238,39 @@ export class AgentService {
       maxRequestsPerTurn: defaults?.maxRequestsPerTurn || 50,
       warnThreshold: 0.8,
       softLimit: false,
+    });
+
+    // Initialize system reminder (Harness optimization)
+    this.systemReminder = new SystemReminder({
+      enabled: true,
+      appendToToolResults: true,
+      maxRemindersPerTurn: 3,
+    });
+
+    // Initialize tool usage analyzer (Harness optimization)
+    this.toolUsageAnalyzer = new ToolUsageAnalyzer({
+      enabled: true,
+      lowUsageThreshold: 5,
+      veryLowUsageThreshold: 1,
+      minCallsForAnalysis: 100,
+      reportIntervalMs: 60 * 60 * 1000, // 1 hour
+    });
+
+    // Initialize tool chain tracker (Harness optimization)
+    this.toolChainTracker = new ToolChainTracker({
+      enabled: true,
+      maxChainsPerSession: 10,
+      maxNodesPerChain: 100,
+      trackParams: true,
+      trackResults: true,
+      autoPrune: true,
+    });
+
+    // Initialize error pattern matcher (Harness optimization)
+    this.errorPatternMatcher = new ErrorPatternMatcher({
+      enabled: true,
+      defaultMaxRetries: 1,
+      logMatches: true,
     });
 
     // Setup shutdown handlers
@@ -404,6 +445,9 @@ export class AgentService {
 
     try {
       typing.start();
+
+      // ✅ Harness Optimization: Start tool chain tracking
+      this.toolChainTracker.startChain(sessionKey);
 
       // Try to start a stream for progress updates (if channel supports it)
       const accountId = msg.metadata?.accountId as string | undefined;
@@ -1012,6 +1056,16 @@ export class AgentService {
         log.debug({ tool: event.toolName, args: event.args }, 'Tool execution started');
         // Trigger progress manager to send feedback
         this.progressManager.onToolStart(event.toolName, event.args || {});
+        
+        // ✅ Harness Optimization: Record tool call in chain
+        if (this.currentContext) {
+          this.toolChainTracker.recordCall(
+            this.currentContext.sessionKey,
+            event.toolName,
+            event.args || {},
+            0
+          );
+        }
         break;
       case 'tool_execution_update':
         // Send tool update feedback (streaming)
@@ -1022,10 +1076,59 @@ export class AgentService {
         // Trigger progress manager for tool end
         this.progressManager.onToolEnd(event.toolName, event.result, event.isError);
         
+        // ✅ Harness Optimization: Append system reminder to tool result
+        event.result = this.systemReminder.appendToResult(event.result);
+        
+        // ✅ Harness Optimization: Record tool usage for analytics
+        const durationMs = (event as any).durationMs || 0;
+        this.toolUsageAnalyzer.recordUsage(
+          event.toolName,
+          !event.isError,
+          durationMs
+        );
+        
+        // ✅ Harness Optimization: Record tool result in chain
+        if (this.currentContext) {
+          // Find the last node for this tool call
+          const chain = this.toolChainTracker.getCurrentChain(this.currentContext.sessionKey);
+          if (chain) {
+            const lastNode = chain.nodes[chain.nodes.length - 1];
+            if (lastNode && lastNode.toolName === event.toolName) {
+              this.toolChainTracker.recordResult(
+                this.currentContext.sessionKey,
+                lastNode.id,
+                event.result,
+                event.isError ? 'Tool execution failed' : undefined,
+                durationMs
+              );
+            }
+          }
+        }
+        
         // Track tool errors
         if (event.isError) {
           const errorText = this.extractErrorFromResult(event.result);
           this.errorTracker.recordFailure(event.toolName, errorText);
+          
+          // ✅ Harness Optimization: Match error pattern and provide recovery suggestion
+          const errorMatch = this.errorPatternMatcher.matchError(errorText);
+          if (errorMatch.matched && errorMatch.pattern) {
+            // Append recovery suggestion to result
+            if (event.result && typeof event.result === 'object') {
+              const res = event.result as Record<string, unknown>;
+              if (res.content && Array.isArray(res.content)) {
+                res.content = [
+                  ...res.content,
+                  { type: 'text', text: `\n\n💡 Recovery Suggestion:\n${errorMatch.suggestion}` },
+                ];
+              }
+            }
+            
+            log.warn(
+              { tool: event.toolName, pattern: errorMatch.pattern.name, severity: errorMatch.pattern.severity },
+              'Matched error pattern'
+            );
+          }
           
           // ✅ Enhanced: Notify about accumulated errors
           const failureCount = this.errorTracker.getFailureCount(event.toolName);
@@ -1060,6 +1163,12 @@ export class AgentService {
         // Reset reliability counters
         this.errorTracker.reset();
         this.requestLimiter.reset();
+        this.systemReminder.resetTurn();
+        
+        // ✅ Harness Optimization: End tool chain tracking
+        if (this.currentContext) {
+          this.toolChainTracker.endChain(this.currentContext.sessionKey);
+        }
         break;
       case 'agent_end':
         log.debug('Agent turn ended');

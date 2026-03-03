@@ -59,8 +59,9 @@ function estimateMessageTokens(msg: AgentMessage): number {
 
 /**
  * Count conversation turns (user+assistant pairs)
+ * Reserved for future use
  */
-function countTurns(messages: AgentMessage[]): number {
+function _countTurns(messages: AgentMessage[]): number {
   let turns = 0;
   let lastRole: string | null = null;
   

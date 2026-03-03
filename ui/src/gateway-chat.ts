@@ -102,6 +102,8 @@ export class XopcbotGatewayChat extends LitElement {
   private _shouldReconnect = true;
   private _isSending = false;
   private _lastLoadedSessionKey: string | null = null;
+  /** Flag to prevent initial load race condition */
+  private _isLoadingSession = false;
 
   // Configurable reconnection settings
   private get _maxReconnectAttempts(): number {
@@ -153,6 +155,9 @@ export class XopcbotGatewayChat extends LitElement {
     const route = this.route;
     if (!route) return;
 
+    // Prevent race condition - if already loading, skip
+    if (this._isLoadingSession) return;
+
     // Get target session key from route
     let targetSessionKey: string | null = null;
 
@@ -185,6 +190,10 @@ export class XopcbotGatewayChat extends LitElement {
    */
   private async _loadSession(sessionKey: string, offset = 0): Promise<void> {
     if (!this.config) return;
+    
+    // Prevent race condition
+    if (this._isLoadingSession) return;
+    this._isLoadingSession = true;
 
     try {
       const url = apiUrl(`/api/sessions/${encodeURIComponent(sessionKey)}?offset=${offset}&limit=50`);
@@ -228,6 +237,8 @@ export class XopcbotGatewayChat extends LitElement {
       this.requestUpdate();
     } catch (err) {
       console.error('[GatewayChat] Failed to load session:', err);
+    } finally {
+      this._isLoadingSession = false;
     }
   }
 

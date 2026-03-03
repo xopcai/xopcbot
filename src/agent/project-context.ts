@@ -293,8 +293,8 @@ async function gatherFileStats(
       totalLines: options.includeLineCounts ? totalLines : undefined,
       extensions,
     };
-  } catch {
-    log.warn({ workspace, error }, 'Failed to gather file stats with git, falling back to basic scan');
+  } catch (err) {
+    log.warn({ workspace, error: (err as Error).message }, 'Failed to gather file stats with git, falling back to basic scan');
 
     // Fallback: basic directory scan
     return {
@@ -351,8 +351,8 @@ async function detectTechStack(workspace: string): Promise<TechStack> {
     } else {
       buildTools.add('npm');
     }
-  } catch {
-    log.debug({ workspace, error: (error as Error).message }, 'No package.json found or failed to parse');
+  } catch (err) {
+    log.debug({ workspace, error: (err as Error).message }, 'No package.json found or failed to parse');
   }
 
   // Detect build tools from files

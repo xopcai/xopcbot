@@ -29,6 +29,7 @@ import { HookHandler } from './hook-handler.js';
 import { AgentToolsFactory } from './agent-tools-factory.js';
 import { ToolErrorTracker } from './tool-error-tracker.js';
 import { RequestLimiter } from './request-limiter.js';
+import { SelfVerifyMiddleware } from './middleware/self-verify.js';
 
 const log = createLogger('AgentService');
 
@@ -82,6 +83,7 @@ export class AgentService {
   private toolsFactory: AgentToolsFactory;
   private errorTracker: ToolErrorTracker;
   private requestLimiter: RequestLimiter;
+  private selfVerifyMiddleware: SelfVerifyMiddleware;
 
   // Stream handle for current context (for progress updates)
   private currentStreamHandle: {
@@ -224,6 +226,14 @@ export class AgentService {
       maxFailuresPerTool: defaults?.maxToolFailuresPerTurn || 3,
       maxTotalFailures: defaults?.maxToolFailuresPerTurn ? defaults.maxToolFailuresPerTurn + 2 : 5,
       resetOnTurnEnd: true,
+    });
+
+    // Initialize self-verify middleware for harness engineering
+    this.selfVerifyMiddleware = new SelfVerifyMiddleware({
+      maxEditsPerFile: 5,
+      enablePreCompletionCheck: true,
+      minTurnsForVerification: 4,
+      resetOnVerification: true,
     });
     
     this.requestLimiter = new RequestLimiter({
@@ -1012,6 +1022,8 @@ export class AgentService {
         log.debug({ tool: event.toolName, args: event.args }, 'Tool execution started');
         // Trigger progress manager to send feedback
         this.progressManager.onToolStart(event.toolName, event.args || {});
+        // Track file edits for self-verify middleware (harness engineering)
+        this.trackFileEditForSelfVerify(event.toolName, event.args);
         break;
       case 'tool_execution_update':
         // Send tool update feedback (streaming)
@@ -1021,24 +1033,27 @@ export class AgentService {
         log.debug({ tool: event.toolName, isError: event.isError }, 'Tool execution complete');
         // Trigger progress manager for tool end
         this.progressManager.onToolEnd(event.toolName, event.result, event.isError);
-        
+
+        // Track file edits for self-verify middleware (harness engineering)
+        // Note: args are not available on tool_execution_end, we track at tool_execution_start
+
         // Track tool errors
         if (event.isError) {
           const errorText = this.extractErrorFromResult(event.result);
           this.errorTracker.recordFailure(event.toolName, errorText);
-          
+
           // ✅ Enhanced: Notify about accumulated errors
           const failureCount = this.errorTracker.getFailureCount(event.toolName);
           const maxFailures = this.errorTracker.getConfig().maxFailuresPerTool;
           const remaining = this.errorTracker.remainingAttempts(event.toolName);
-          
+
           this.progressManager.onToolErrorAccumulated(
             event.toolName,
             failureCount,
             maxFailures,
             remaining
           );
-          
+
           // Check if limits are reached
           if (this.errorTracker.isToolLimitReached(event.toolName)) {
             log.warn(
@@ -1046,7 +1061,7 @@ export class AgentService {
               'Tool reached failure limit'
             );
           }
-          
+
           if (this.errorTracker.isTotalLimitReached()) {
             log.warn(
               { totalFailures: this.errorTracker.getSummary().total },
@@ -1060,10 +1075,17 @@ export class AgentService {
         // Reset reliability counters
         this.errorTracker.reset();
         this.requestLimiter.reset();
+        // Reset self-verify middleware for new turn
+        this.selfVerifyMiddleware.onTurnStart();
         break;
       case 'agent_end':
         log.debug('Agent turn ended');
         this.progressManager.onAgentEnd();
+        // Log self-verify summary for debugging
+        const editSummary = this.selfVerifyMiddleware.getEditSummary();
+        if (editSummary.totalEdits > 0) {
+          log.debug({ editSummary }, 'Self-verify edit summary');
+        }
         break;
     }
   }
@@ -1097,6 +1119,53 @@ export class AgentService {
     }
     
     return 'Unknown error';
+  }
+
+  /**
+   * Track file edits for self-verify middleware (harness engineering)
+   * Records write/edit/shell operations to detect excessive editing patterns
+   */
+  private trackFileEditForSelfVerify(
+    toolName: string,
+    args: Record<string, unknown> | undefined
+  ): void {
+    const normalizedName = toolName.toLowerCase();
+
+    // Track write_file operations
+    if (normalizedName.includes('write') && args?.path) {
+      this.selfVerifyMiddleware.recordEdit(String(args.path), 'write');
+      return;
+    }
+
+    // Track edit_file operations
+    if (normalizedName.includes('edit') && args?.path) {
+      this.selfVerifyMiddleware.recordEdit(String(args.path), 'edit');
+      return;
+    }
+
+    // Track shell commands that might modify files (build/test commands)
+    if (normalizedName.includes('shell') && args?.command) {
+      const cmd = String(args.command);
+      // Detect build/test commands that indicate verification attempts
+      const buildPatterns = [
+        /^(npm|pnpm|yarn)\s+(run\s+)?(build|test|check|lint)/i,
+        /^node\s+.*test/i,
+        /^vitest/i,
+        /^jest/i,
+        /^pytest/i,
+        /^make\s+(build|test|check)/i,
+        /^cargo\s+(build|test|check)/i,
+        /^go\s+(build|test)/i,
+      ];
+
+      for (const pattern of buildPatterns) {
+        if (pattern.test(cmd)) {
+          // Record as shell operation on workspace (general build/verify)
+          this.selfVerifyMiddleware.recordEdit('(build/verify)', 'shell');
+          break;
+        }
+      }
+    }
   }
 
   private getLastAssistantContent(): string | null {

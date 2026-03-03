@@ -132,3 +132,14 @@ export type {
   TechStack,
   ProjectContextOptions,
 } from './project-context.js';
+
+// Tool executor (timeout + retry protection)
+export {
+  executeToolWithProtection,
+  wrapToolWithProtection,
+  wrapToolsWithProtection,
+  DEFAULT_TOOL_EXECUTOR_CONFIG,
+} from './tool-executor.js';
+export type {
+  ToolExecutorConfig,
+} from './tool-executor.js';

@@ -434,11 +434,11 @@ export class ProgressFeedbackManager {
     let type: 'warning' | 'error' = percentage >= 100 ? 'error' : 'warning';
 
     if (percentage >= 100) {
-      message = `❌ ${this.formatToolName(toolName)} 已达到最大失败次数 (${maxFailures}/${maxFailures})`;
+      message = `❌ ${this.formatToolName(toolName)} has reached maximum failures (${maxFailures}/${maxFailures})`;
     } else if (percentage >= 50) {
-      message = `⚠️ ${this.formatToolName(toolName)} 失败 ${failureCount}/${maxFailures} 次`;
+      message = `⚠️ ${this.formatToolName(toolName)} failed ${failureCount}/${maxFailures} times`;
     } else {
-      message = `⚠️ ${this.formatToolName(toolName)} 失败 ${failureCount} 次`;
+      message = `⚠️ ${this.formatToolName(toolName)} failed ${failureCount} time${failureCount > 1 ? 's' : ''}`;
     }
 
     const progressMsg: ProgressMessage = {
@@ -446,8 +446,8 @@ export class ProgressFeedbackManager {
       stage: 'executing',
       message,
       detail: remaining > 0 
-        ? `剩余重试次数：${remaining}` 
-        : '停止执行该工具',
+        ? `Remaining attempts: ${remaining}` 
+        : 'Stopping tool execution',
       toolName,
     };
 
@@ -480,11 +480,11 @@ export class ProgressFeedbackManager {
     let type: 'warning' | 'error' = shouldStop ? 'error' : 'warning';
 
     if (shouldStop) {
-      message = `❌ 已达到请求限制 (${count}/${limit})`;
+      message = `❌ Request limit reached (${count}/${limit})`;
     } else if (percentage >= 90) {
-      message = `⚠️ 请求限制警告 (${count}/${limit})`;
+      message = `⚠️ Request limit warning (${count}/${limit})`;
     } else {
-      message = `⚠️ 接近请求限制 (${count}/${limit})`;
+      message = `⚠️ Approaching request limit (${count}/${limit})`;
     }
 
     const progressMsg: ProgressMessage = {
@@ -492,8 +492,8 @@ export class ProgressFeedbackManager {
       stage: 'thinking',
       message,
       detail: remaining > 0 
-        ? `剩余请求数：${remaining}` 
-        : '停止执行',
+        ? `Remaining requests: ${remaining}` 
+        : 'Stopping execution',
     };
 
     this.callbacks.onProgress?.(progressMsg);

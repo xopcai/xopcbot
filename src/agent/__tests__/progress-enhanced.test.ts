@@ -30,8 +30,8 @@ describe('ProgressFeedbackManager - Enhanced', () => {
       
       expect(progressMessages).toHaveLength(1);
       expect(progressMessages[0].type).toBe('warning');
-      expect(progressMessages[0].message).toContain('Shell 失败 1 次');
-      expect(progressMessages[0].detail).toContain('剩余重试次数：2');
+      expect(progressMessages[0].message).toContain('Shell failed 1 time');
+      expect(progressMessages[0].detail).toContain('Remaining attempts: 2');
     });
 
     it('should notify with warning at 50% failures', () => {
@@ -39,8 +39,8 @@ describe('ProgressFeedbackManager - Enhanced', () => {
       
       expect(progressMessages).toHaveLength(1);
       expect(progressMessages[0].type).toBe('warning');
-      expect(progressMessages[0].message).toContain('Shell 失败 2/3 次');
-      expect(progressMessages[0].detail).toContain('剩余重试次数：1');
+      expect(progressMessages[0].message).toContain('Shell failed 2/3 times');
+      expect(progressMessages[0].detail).toContain('Remaining attempts: 1');
     });
 
     it('should notify with error at 100% failures', () => {
@@ -48,8 +48,8 @@ describe('ProgressFeedbackManager - Enhanced', () => {
       
       expect(progressMessages).toHaveLength(1);
       expect(progressMessages[0].type).toBe('error');
-      expect(progressMessages[0].message).toContain('已达到最大失败次数');
-      expect(progressMessages[0].detail).toContain('停止执行该工具');
+      expect(progressMessages[0].message).toContain('has reached maximum failures');
+      expect(progressMessages[0].detail).toContain('Stopping tool execution');
     });
 
     it('should not notify when showErrorAccumulation is false', () => {
@@ -98,15 +98,15 @@ describe('ProgressFeedbackManager - Enhanced', () => {
       
       expect(progressMessages).toHaveLength(1);
       expect(progressMessages[0].type).toBe('warning');
-      expect(progressMessages[0].message).toContain('接近请求限制');
-      expect(progressMessages[0].detail).toContain('剩余请求数：10');
+      expect(progressMessages[0].message).toContain('Approaching request limit');
+      expect(progressMessages[0].detail).toContain('Remaining requests: 10');
     });
 
     it('should notify warning at 90%', () => {
       manager.onRequestLimitStatus(45, 50, 5, true, false);
       
       expect(progressMessages).toHaveLength(1);
-      expect(progressMessages[0].message).toContain('请求限制警告');
+      expect(progressMessages[0].message).toContain('Request limit warning');
     });
 
     it('should notify error when limit reached', () => {
@@ -114,8 +114,8 @@ describe('ProgressFeedbackManager - Enhanced', () => {
       
       expect(progressMessages).toHaveLength(1);
       expect(progressMessages[0].type).toBe('error');
-      expect(progressMessages[0].message).toContain('已达到请求限制');
-      expect(progressMessages[0].detail).toContain('停止执行');
+      expect(progressMessages[0].message).toContain('Request limit reached');
+      expect(progressMessages[0].detail).toContain('Stopping execution');
     });
 
     it('should not notify when showRequestLimitWarning is false', () => {
@@ -234,12 +234,12 @@ describe('ProgressFeedbackManager - Enhanced', () => {
 
     it('should handle negative remaining attempts', () => {
       manager.onToolErrorAccumulated('shell', 5, 3, -2);
-      expect(progressMessages[0].detail).toContain('停止执行该工具');
+      expect(progressMessages[0].detail).toContain('Stopping tool execution');
     });
 
     it('should handle undefined remaining attempts', () => {
       manager.onToolErrorAccumulated('shell', 1, 3);
-      expect(progressMessages[0].detail).toContain('剩余重试次数：2');
+      expect(progressMessages[0].detail).toContain('Remaining attempts: 2');
     });
   });
 });

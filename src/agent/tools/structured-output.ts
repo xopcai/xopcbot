@@ -267,23 +267,11 @@ export class Element {
   /**
    * Add multiple child elements
    */
-  children(children: Element[]): this {
+  addChildren(children: Element[]): this {
     for (const child of children) {
       this.children.push(child);
     }
     return this;
-  }
-
-  /**
-   * Escape XML special characters
-   */
-  private escapeXml(text: string): string {
-    return text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&apos;');
   }
 
   /**

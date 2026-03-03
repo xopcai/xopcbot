@@ -49,6 +49,19 @@ import { join } from 'path';
 const log = createLogger('TelegramExtension');
 const execAsync = promisify(exec);
 
+// Regex to detect Telegram HTML parse errors
+const TELEGRAM_PARSE_ERR_RE = /can't parse entities|parse entities|find end of the entity|Unmatched end tag/i;
+
+/**
+ * Check if error is a Telegram HTML parse error
+ */
+function isTelegramHtmlParseError(err: unknown): boolean {
+  if (!(err instanceof Error)) {
+    return false;
+  }
+  return TELEGRAM_PARSE_ERR_RE.test(err.message);
+}
+
 /**
  * Compress audio buffer using ffmpeg (wav -> opus)
  * Returns original buffer if compression fails
@@ -950,24 +963,52 @@ export class TelegramChannelExtension implements ChannelExtension {
         // Split long messages into chunks (Telegram limit: 4096 chars)
         const { html } = formatTelegramMessage(content || '');
         const chunks = splitTelegramMessage(html, 3800); // Leave margin for safety
-        
+
         const sendOptions: any = { parse_mode: 'HTML' };
         if (threadId) sendOptions.message_thread_id = parseInt(threadId, 10);
         if (replyToMessageId) sendOptions.reply_to_message_id = parseInt(replyToMessageId, 10);
         if (silent) sendOptions.disable_notification = true;
 
-        // Send first chunk
-        sentMessageId = (await bot.api.sendMessage(chatId, chunks[0], sendOptions)).message_id;
-        
+        // Try to send with HTML, fallback to plain text on parse error
+        try {
+          sentMessageId = (await bot.api.sendMessage(chatId, chunks[0], sendOptions)).message_id;
+        } catch (htmlErr) {
+          if (!isTelegramHtmlParseError(htmlErr)) {
+            throw htmlErr;
+          }
+          // Fallback to plain text
+          log.warn({ chatId, err: htmlErr }, 'HTML parse error, retrying with plain text');
+          const plainSendOptions: any = {};
+          if (threadId) plainSendOptions.message_thread_id = parseInt(threadId, 10);
+          if (replyToMessageId) plainSendOptions.reply_to_message_id = parseInt(replyToMessageId, 10);
+          if (silent) plainSendOptions.disable_notification = true;
+
+          // Send with plain text chunks
+          const plainChunks = splitTelegramMessage(content || '', 3800);
+          sentMessageId = (await bot.api.sendMessage(chatId, plainChunks[0], plainSendOptions)).message_id;
+
+          // Send remaining chunks as replies
+          for (let i = 1; i < plainChunks.length; i++) {
+            const replyOptions: any = {};
+            replyOptions.reply_to_message_id = sentMessageId;
+            if (threadId) replyOptions.message_thread_id = parseInt(threadId, 10);
+            if (silent) replyOptions.disable_notification = true;
+
+            await bot.api.sendMessage(chatId, plainChunks[i], replyOptions);
+          }
+          log.info({ chatId, chunks: plainChunks.length }, 'Fallback plain text message sent');
+          return { messageId: String(sentMessageId), chatId, success: true };
+        }
+
         // Send remaining chunks as replies
         for (let i = 1; i < chunks.length; i++) {
-          const replyOptions: any = { 
+          const replyOptions: any = {
             parse_mode: 'HTML',
-            reply_to_message_id: sentMessageId 
+            reply_to_message_id: sentMessageId
           };
           if (threadId) replyOptions.message_thread_id = parseInt(threadId, 10);
           if (silent) replyOptions.disable_notification = true;
-          
+
           await bot.api.sendMessage(chatId, chunks[i], replyOptions);
         }
       }

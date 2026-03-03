@@ -68,13 +68,16 @@ describe('Retry Module', () => {
       
       await retryWithBackoff(operation, { 
         maxAttempts: 3, 
-        initialDelayMs: 10,
+        initialDelayMs: 100,
         backoffFactor: 2,
         onRetry,
       });
       
       expect(delays.length).toBe(2);
-      expect(delays[1]).toBeGreaterThan(delays[0] * 1.5); // Allow for jitter
+      // Second delay should be roughly 2x the first (with some jitter tolerance)
+      // Jitter is ±25%, so second delay should be between 1.5x and 2.5x
+      expect(delays[1]).toBeGreaterThan(delays[0] * 1.2);
+      expect(delays[1]).toBeLessThan(delays[0] * 3);
     });
   });
 

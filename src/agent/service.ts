@@ -974,6 +974,23 @@ export class AgentService {
       case 'agent_start':
         log.debug('Agent turn started');
         this.progressManager.startTask();
+        
+        // Record request and check limits
+        const result = this.requestLimiter.recordRequest();
+        
+        // ✅ Enhanced: Notify about request limit status
+        this.progressManager.onRequestLimitStatus(
+          result.count,
+          result.limit,
+          result.remaining,
+          result.isWarning,
+          result.shouldStop
+        );
+        
+        if (result.shouldStop) {
+          log.error({ count: result.count, limit: result.limit }, 'Request limit reached, aborting turn');
+          this.agent.abort();
+        }
         break;
       case 'turn_start':
         log.debug('Turn started');
@@ -1009,6 +1026,18 @@ export class AgentService {
         if (event.isError) {
           const errorText = this.extractErrorFromResult(event.result);
           this.errorTracker.recordFailure(event.toolName, errorText);
+          
+          // ✅ Enhanced: Notify about accumulated errors
+          const failureCount = this.errorTracker.getFailureCount(event.toolName);
+          const maxFailures = this.errorTracker.getConfig().maxFailuresPerTool;
+          const remaining = this.errorTracker.remainingAttempts(event.toolName);
+          
+          this.progressManager.onToolErrorAccumulated(
+            event.toolName,
+            failureCount,
+            maxFailures,
+            remaining
+          );
           
           // Check if limits are reached
           if (this.errorTracker.isToolLimitReached(event.toolName)) {

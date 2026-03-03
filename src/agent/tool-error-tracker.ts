@@ -186,6 +186,13 @@ export class ToolErrorTracker {
   }
 
   /**
+   * Get tracker configuration
+   */
+  getConfig(): ToolErrorTrackerConfig {
+    return { ...this.config };
+  }
+
+  /**
    * Clean up old failures (outside the failure window)
    */
   cleanupOldFailures(): void {

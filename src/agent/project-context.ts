@@ -11,7 +11,7 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { readFile, stat, access } from 'fs/promises';
-import { join, extname, basename } from 'path';
+import { join, extname, basename, resolve, normalize, isAbsolute } from 'path';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('ProjectContext');
@@ -163,6 +163,26 @@ const BUILD_TOOL_PATTERNS: Array<{ file: string; tool: string }> = [
 ];
 
 /**
+ * Validate workspace path to prevent directory traversal
+ */
+function validateWorkspace(workspace: string): string {
+  const resolved = resolve(workspace);
+  const normalized = normalize(resolved);
+  
+  // Ensure path is absolute and doesn't contain traversal attempts
+  if (!isAbsolute(normalized)) {
+    throw new Error(`Workspace path must be absolute: ${workspace}`);
+  }
+  
+  // Check for null bytes
+  if (normalized.includes('\0')) {
+    throw new Error('Invalid workspace path: contains null bytes');
+  }
+  
+  return normalized;
+}
+
+/**
  * Gather project context information
  */
 export async function gatherProjectContext(
@@ -170,8 +190,11 @@ export async function gatherProjectContext(
   options: Partial<ProjectContextOptions> = {}
 ): Promise<ProjectContext> {
   const opts = { ...DEFAULT_OPTIONS, ...options };
+  
+  // Validate workspace path
+  const validatedWorkspace = validateWorkspace(workspace);
 
-  log.info({ workspace }, 'Gathering project context');
+  log.info({ workspace: validatedWorkspace }, 'Gathering project context');
 
   const startTime = Date.now();
 
@@ -194,7 +217,7 @@ export async function gatherProjectContext(
 
   const context: ProjectContext = {
     name: projectName,
-    rootPath: workspace,
+    rootPath: validatedWorkspace,
     totalFiles: fileStats.totalFiles,
     totalLinesOfCode: fileStats.totalLines,
     extensionStats: fileStats.extensions,
@@ -246,7 +269,7 @@ async function gatherFileStats(
           const lines = content.split('\n').length;
           current.lines += lines;
           totalLines += lines;
-        } catch {
+        } catch (error) {
           // Binary or unreadable file
         }
       }
@@ -328,8 +351,8 @@ async function detectTechStack(workspace: string): Promise<TechStack> {
     } else {
       buildTools.add('npm');
     }
-  } catch {
-    // No package.json
+  } catch (error) {
+    log.debug({ workspace, error: (error as Error).message }, 'No package.json found or failed to parse');
   }
 
   // Detect build tools from files
@@ -351,7 +374,7 @@ async function detectTechStack(workspace: string): Promise<TechStack> {
         languages.add(lang);
       }
     }
-  } catch {
+  } catch (error) {
     // Ignore
   }
 
@@ -382,7 +405,7 @@ async function gatherGitInfo(workspace: string): Promise<{
       branch: branch.trim() || undefined,
       remote: remote.trim() || undefined,
     };
-  } catch {
+  } catch (error) {
     return { hasGit: false };
   }
 }
@@ -400,7 +423,7 @@ async function gatherDocumentation(workspace: string): Promise<ProjectContext['d
         const content = await readFile(join(workspace, file), 'utf-8');
         docs.readme = content.slice(0, 1000); // First 1000 chars
         break;
-      } catch {
+      } catch (error) {
         // Ignore
       }
     }
@@ -410,7 +433,7 @@ async function gatherDocumentation(workspace: string): Promise<ProjectContext['d
     try {
       const content = await readFile(join(workspace, 'CONTRIBUTING.md'), 'utf-8');
       docs.contributing = content.slice(0, 500);
-    } catch {
+    } catch (error) {
       // Ignore
     }
   }
@@ -436,7 +459,7 @@ async function gatherPackageInfo(workspace: string): Promise<ProjectContext['pac
       dependencies: Object.keys(pkg.dependencies || {}),
       devDependencies: Object.keys(pkg.devDependencies || {}),
     };
-  } catch {
+  } catch (error) {
     // Try other package files
     try {
       const content = await readFile(join(workspace, 'Cargo.toml'), 'utf-8');
@@ -450,7 +473,7 @@ async function gatherPackageInfo(workspace: string): Promise<ProjectContext['pac
         dependencies: [],
         devDependencies: [],
       };
-    } catch {
+    } catch (error) {
       return undefined;
     }
   }
@@ -465,7 +488,7 @@ async function detectProjectName(workspace: string): Promise<string> {
     const content = await readFile(join(workspace, 'package.json'), 'utf-8');
     const pkg = JSON.parse(content);
     if (pkg.name) return pkg.name;
-  } catch {
+  } catch (error) {
     // Ignore
   }
 
@@ -474,7 +497,7 @@ async function detectProjectName(workspace: string): Promise<string> {
     const content = await readFile(join(workspace, 'Cargo.toml'), 'utf-8');
     const match = content.match(/name\s*=\s*"([^"]+)"/);
     if (match) return match[1];
-  } catch {
+  } catch (error) {
     // Ignore
   }
 
@@ -489,7 +512,7 @@ async function fileExists(path: string): Promise<boolean> {
   try {
     await access(path);
     return true;
-  } catch {
+  } catch (error) {
     return false;
   }
 }

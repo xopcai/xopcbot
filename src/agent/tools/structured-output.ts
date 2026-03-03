@@ -207,11 +207,23 @@ export class Element {
   }
 
   /**
+   * Escape XML special characters for attribute values
+   */
+  private escapeXml(text: string): string {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+  }
+
+  /**
    * Add an attribute
    */
   attr(key: string, value: string | number | boolean | undefined): this {
     if (value !== undefined && value !== null) {
-      this.attributes.set(key, String(value));
+      this.attributes.set(key, this.escapeXml(String(value)));
     }
     return this;
   }

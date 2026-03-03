@@ -27,6 +27,8 @@ import { initializeCommands } from '../commands/index.js';
 import { ProgressFeedbackManager, formatProgressMessage, formatHeartbeatMessage, type ProgressStage, type ProgressMessage } from './progress.js';
 import { HookHandler } from './hook-handler.js';
 import { AgentToolsFactory } from './agent-tools-factory.js';
+import { ToolErrorTracker } from './tool-error-tracker.js';
+import { RequestLimiter } from './request-limiter.js';
 
 const log = createLogger('AgentService');
 
@@ -37,6 +39,9 @@ export interface AgentServiceConfig {
   config?: Config;
   agentDefaults?: AgentDefaults;
   extensionRegistry?: ExtensionRegistry;
+  // Reliability settings
+  maxRequestsPerTurn?: number;
+  maxToolFailuresPerTurn?: number;
 }
 
 interface AgentContext {
@@ -75,6 +80,8 @@ export class AgentService {
   private progressManager: ProgressFeedbackManager;
   private hookHandler: HookHandler;
   private toolsFactory: AgentToolsFactory;
+  private errorTracker: ToolErrorTracker;
+  private requestLimiter: RequestLimiter;
 
   // Stream handle for current context (for progress updates)
   private currentStreamHandle: {
@@ -108,19 +115,22 @@ export class AgentService {
     log.info('Command system initialized');
 
     // Setup session store
-    const defaults = config.agentDefaults || config.config?.agents?.defaults;
+    const sessionStoreDefaults = config.agentDefaults || config.config?.agents?.defaults;
     const windowConfig: Partial<WindowConfig> = {
       maxMessages: 100,
-      keepRecentMessages: defaults?.maxToolIterations || 20,
+      keepRecentMessages: sessionStoreDefaults?.maxToolIterations || 20,
       preserveSystemMessages: true,
     };
     const compactionConfig: Partial<CompactionConfig> = {
-      enabled: defaults?.compaction?.enabled ?? true,
-      mode: (defaults?.compaction?.mode as 'extractive' | 'abstractive' | 'structured') || 'abstractive',
-      reserveTokens: defaults?.compaction?.reserveTokens || 8000,
-      triggerThreshold: defaults?.compaction?.triggerThreshold || 0.8,
-      minMessagesBeforeCompact: defaults?.compaction?.minMessagesBeforeCompact || 10,
-      keepRecentMessages: defaults?.compaction?.keepRecentMessages || 10,
+      enabled: sessionStoreDefaults?.compaction?.enabled ?? true,
+      mode: (sessionStoreDefaults?.compaction?.mode as 'extractive' | 'abstractive' | 'structured') || 'abstractive',
+      reserveTokens: sessionStoreDefaults?.compaction?.reserveTokens || 8000,
+      triggerThreshold: sessionStoreDefaults?.compaction?.triggerThreshold || 0.8,
+      minMessagesBeforeCompact: sessionStoreDefaults?.compaction?.minMessagesBeforeCompact || 10,
+      keepRecentMessages: sessionStoreDefaults?.compaction?.keepRecentMessages || 10,
+      // Dual-strategy compaction
+      evictionWindow: sessionStoreDefaults?.compaction?.evictionWindow || 0.2,
+      retentionWindow: sessionStoreDefaults?.compaction?.retentionWindow || 6,
     };
     this.sessionStore = new SessionStore(config.workspace, windowConfig, compactionConfig);
 
@@ -206,6 +216,20 @@ export class AgentService {
       onHeartbeat: (elapsedMs, stage) => {
         this.sendHeartbeatFeedback(elapsedMs, stage);
       },
+    });
+
+    // Initialize reliability modules
+    const defaults = config.agentDefaults || config.config?.agents?.defaults;
+    this.errorTracker = new ToolErrorTracker({
+      maxFailuresPerTool: defaults?.maxToolFailuresPerTurn || 3,
+      maxTotalFailures: defaults?.maxToolFailuresPerTurn ? defaults.maxToolFailuresPerTurn + 2 : 5,
+      resetOnTurnEnd: true,
+    });
+    
+    this.requestLimiter = new RequestLimiter({
+      maxRequestsPerTurn: defaults?.maxRequestsPerTurn || 50,
+      warnThreshold: 0.8,
+      softLimit: false,
     });
 
     // Setup shutdown handlers
@@ -980,15 +1004,70 @@ export class AgentService {
         log.debug({ tool: event.toolName, isError: event.isError }, 'Tool execution complete');
         // Trigger progress manager for tool end
         this.progressManager.onToolEnd(event.toolName, event.result, event.isError);
+        
+        // Track tool errors
+        if (event.isError) {
+          const errorText = this.extractErrorFromResult(event.result);
+          this.errorTracker.recordFailure(event.toolName, errorText);
+          
+          // Check if limits are reached
+          if (this.errorTracker.isToolLimitReached(event.toolName)) {
+            log.warn(
+              { tool: event.toolName, failures: this.errorTracker.getFailureCount(event.toolName) },
+              'Tool reached failure limit'
+            );
+          }
+          
+          if (this.errorTracker.isTotalLimitReached()) {
+            log.warn(
+              { totalFailures: this.errorTracker.getSummary().total },
+              'Total failure limit reached'
+            );
+          }
+        }
         break;
       case 'turn_end':
         log.debug('Turn complete');
+        // Reset reliability counters
+        this.errorTracker.reset();
+        this.requestLimiter.reset();
         break;
       case 'agent_end':
         log.debug('Agent turn ended');
         this.progressManager.onAgentEnd();
         break;
     }
+  }
+
+  /**
+   * Extract error message from tool result
+   */
+  private extractErrorFromResult(result: unknown): string {
+    if (!result) return 'Unknown error';
+    
+    if (typeof result === 'string') {
+      return result.slice(0, 500);
+    }
+    
+    if (typeof result === 'object' && result !== null) {
+      const res = result as Record<string, unknown>;
+      if (res.content && Array.isArray(res.content)) {
+        const textContent = res.content.find((c: unknown) => 
+          typeof c === 'object' && c !== null && (c as Record<string, unknown>).type === 'text'
+        );
+        if (textContent) {
+          return String((textContent as Record<string, unknown>).text || '').slice(0, 500);
+        }
+      }
+      if (res.error) {
+        return String(res.error).slice(0, 500);
+      }
+      if (res.message) {
+        return String(res.message).slice(0, 500);
+      }
+    }
+    
+    return 'Unknown error';
   }
 
   private getLastAssistantContent(): string | null {

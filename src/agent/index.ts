@@ -54,3 +54,14 @@ export type {
   ProgressCallbacks,
   ProgressMessage,
 } from './progress.js';
+
+// Reliability modules
+export { ToolErrorTracker } from './tool-error-tracker.js';
+export type { ToolErrorTrackerConfig, ToolFailureRecord } from './tool-error-tracker.js';
+export { RequestLimiter } from './request-limiter.js';
+export type { RequestLimiterConfig, RequestLimitResult } from './request-limiter.js';
+
+// Memory modules
+export { generateStructuredSummary, formatSummaryAsText, createSummaryMessage } from './memory/summary-generator.js';
+export type { ConversationSummary, ToolCallSummary } from './memory/summary-generator.js';
+export { calculateCompactionRange } from './memory/compaction.js';

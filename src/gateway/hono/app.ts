@@ -254,7 +254,7 @@ export function createHonoApp(config: HonoAppConfig): Hono {
     
     // Update agent defaults
     if (body.agents?.defaults) {
-      if (!config.agents) config.agents = { defaults: { workspace: '~/.xopcbot/workspace', model: 'anthropic/claude-sonnet-4-5', maxTokens: 8192, temperature: 0.7, maxToolIterations: 20 } };
+      if (!config.agents) config.agents = { defaults: { workspace: '~/.xopcbot/workspace', model: 'anthropic/claude-sonnet-4-5', maxTokens: 8192, temperature: 0.7, maxToolIterations: 20, maxRequestsPerTurn: 50, maxToolFailuresPerTurn: 3 } };
       if (!config.agents.defaults) config.agents.defaults = {} as any;
       
       if (body.agents.defaults.model !== undefined) {

@@ -696,6 +696,8 @@ async function setupModel(
           maxTokens: 8192,
           temperature: 0.7,
           maxToolIterations: 20,
+          maxRequestsPerTurn: 50,
+          maxToolFailuresPerTurn: 3,
         };
         config.agents.defaults.model = { primary: model, fallbacks: [] };
         config.agents.defaults.workspace = ctx.workspacePath;
@@ -790,6 +792,8 @@ async function setupModel(
       maxTokens: 8192,
       temperature: 0.7,
       maxToolIterations: 20,
+      maxRequestsPerTurn: 50,
+      maxToolFailuresPerTurn: 3,
     };
     config.agents.defaults.model = { primary: `${provider}/${model}`, fallbacks: [] };
     config.agents.defaults.workspace = ctx.workspacePath;
@@ -817,6 +821,8 @@ async function setupModel(
     maxTokens: 8192,
     temperature: 0.7,
     maxToolIterations: 20,
+    maxRequestsPerTurn: 50,
+    maxToolFailuresPerTurn: 3,
   };
   config.agents.defaults.model = { primary: model, fallbacks: [] };
   config.agents.defaults.workspace = ctx.workspacePath;

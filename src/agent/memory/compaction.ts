@@ -1,6 +1,7 @@
-// Session Compaction - Compress old messages using LLM summary
+// Session Compaction - Compress old messages using dual-strategy approach
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
 import { complete, type Model, type Api } from '@mariozechner/pi-ai';
+import { generateStructuredSummary, formatSummaryAsText, type ConversationSummary } from './summary-generator.js';
 
 export interface CompactionResult {
   summary: string;
@@ -8,6 +9,7 @@ export interface CompactionResult {
   tokensBefore: number;
   tokensAfter: number;
   compacted: boolean;
+  structuredSummary?: ConversationSummary;
 }
 
 export interface CompactionConfig {
@@ -18,6 +20,9 @@ export interface CompactionConfig {
   minMessagesBeforeCompact: number;
   keepRecentMessages: number;
   summaryMaxTokens: number;
+  // Dual-strategy config
+  evictionWindow: number;    // Eviction window ratio (0.2 = 20% oldest messages)
+  retentionWindow: number;   // Retention window (keep last N turns)
 }
 
 const DEFAULT_CONFIG: CompactionConfig = {
@@ -28,6 +33,8 @@ const DEFAULT_CONFIG: CompactionConfig = {
   minMessagesBeforeCompact: 10,
   keepRecentMessages: 10,
   summaryMaxTokens: 500,
+  evictionWindow: 0.2,    // 20% oldest messages
+  retentionWindow: 6,     // Keep last 6 turns
 };
 
 // Rough token estimation (4 chars per token average)
@@ -50,9 +57,84 @@ function estimateMessageTokens(msg: AgentMessage): number {
   return estimateTokens(text) + 10;
 }
 
+/**
+ * Count conversation turns (user+assistant pairs)
+ */
+function countTurns(messages: AgentMessage[]): number {
+  let turns = 0;
+  let lastRole: string | null = null;
+  
+  for (const msg of messages) {
+    if (msg.role === 'user' && lastRole !== 'user') {
+      turns++;
+    }
+    lastRole = msg.role;
+  }
+  
+  return turns;
+}
+
+/**
+ * Find the index of the Nth turn from the end
+ */
+function findNthTurnFromEnd(messages: AgentMessage[], n: number): number {
+  if (n <= 0) return messages.length;
+  
+  let turnsFound = 0;
+  let lastRole: string | null = null;
+  
+  // Iterate from end to beginning
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    
+    if (msg.role === 'user' && lastRole !== 'user') {
+      turnsFound++;
+      if (turnsFound === n) {
+        return i;
+      }
+    }
+    lastRole = msg.role;
+  }
+  
+  return 0; // Return beginning if not enough turns
+}
+
+/**
+ * Calculate compaction range using dual-strategy approach
+ * Takes the minimum of eviction and retention strategies (more conservative)
+ */
+export function calculateCompactionRange(
+  messages: AgentMessage[],
+  config: CompactionConfig
+): { start: number; end: number } | null {
+  const totalMessages = messages.length;
+  
+  if (totalMessages < config.minMessagesBeforeCompact) {
+    return null;
+  }
+  
+  // Strategy 1: Eviction window - evict oldest N% of messages
+  const evictionEnd = Math.floor(totalMessages * config.evictionWindow);
+  
+  // Strategy 2: Retention window - keep last N turns
+  const retentionStart = findNthTurnFromEnd(messages, config.retentionWindow);
+  const retentionEnd = retentionStart > 0 ? retentionStart - 1 : 0;
+  
+  // Take the smaller range (more conservative compaction)
+  const compactionEnd = Math.min(evictionEnd, retentionEnd);
+  
+  if (compactionEnd <= 1) {
+    return null; // Not enough messages to compact
+  }
+  
+  return { start: 0, end: compactionEnd };
+}
+
 export class SessionCompactor {
+  private config: CompactionConfig;
+  
   constructor(
-    private config: Partial<CompactionConfig> = {},
+    config: Partial<CompactionConfig> = {},
     private model?: Model<Api>
   ) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -88,7 +170,7 @@ export class SessionCompactor {
   }
 
   /**
-   * Compact messages by summarizing old ones
+   * Compact messages by summarizing old ones using dual-strategy
    */
   async compact(
     messages: AgentMessage[],
@@ -104,11 +186,23 @@ export class SessionCompactor {
       };
     }
 
-    const keepRecent = this.config.keepRecentMessages;
-    const messagesToSummarize = messages.slice(0, -keepRecent);
-    const keptMessages = messages.slice(-keepRecent);
+    // Calculate compaction range using dual-strategy
+    const range = calculateCompactionRange(messages, this.config);
+    
+    // Fallback to simple strategy if dual-strategy returns null
+    const keepRecent = range ? messages.length - range.end : this.config.keepRecentMessages;
+    const messagesToSummarize = range 
+      ? messages.slice(0, range.end)
+      : messages.slice(0, -keepRecent);
+    const keptMessages = range 
+      ? messages.slice(range.end)
+      : messages.slice(-keepRecent);
 
+    // Generate summary based on mode
     const summary = await this.generateSummary(messagesToSummarize);
+    const structuredSummary = this.config.mode === 'structured' 
+      ? generateStructuredSummary(messagesToSummarize)
+      : undefined;
 
     const tokensBefore = this.estimateTotalTokens(messages);
     const summaryTokens = estimateTokens(summary) + 20;
@@ -117,10 +211,11 @@ export class SessionCompactor {
 
     return {
       summary,
-      firstKeptIndex: messages.length - keepRecent,
+      firstKeptIndex: keptMessages.length > 0 ? messages.length - keptMessages.length : 0,
       tokensBefore,
       tokensAfter,
       compacted: true,
+      structuredSummary,
     };
   }
 
@@ -131,10 +226,12 @@ export class SessionCompactor {
     // Use LLM if available and mode is abstractive/structured
     if (this.model && (this.config.mode === 'abstractive' || this.config.mode === 'structured')) {
       try {
-        if (this.config.mode === 'abstractive') {
-          return await this.llmAbstractiveSummary(messages);
+        if (this.config.mode === 'structured') {
+          // Generate structured summary and format as text
+          const structured = generateStructuredSummary(messages);
+          return formatSummaryAsText(structured, true);
         } else {
-          return await this.llmStructuredSummary(messages);
+          return await this.llmAbstractiveSummary(messages);
         }
       } catch (err) {
         console.warn('[Compactor] LLM summarization failed, falling back to extractive', err);
@@ -176,50 +273,6 @@ Summary:`;
       : '';
 
     return text.trim();
-  }
-
-  /**
-   * LLM-based structured extraction (structured memory)
-   */
-  private async llmStructuredSummary(messages: AgentMessage[]): Promise<string> {
-    if (!this.model) {
-      throw new Error('Model not available');
-    }
-
-    const conversation = this.formatMessages(messages);
-    const prompt = `Extract key information from this conversation in a structured format:
-
-${conversation}
-
-Output JSON format:
-{
-  "task": "What the user was trying to do",
-  "decisions": ["Key decisions made"],
-  "preferences": ["User preferences mentioned"],
-  "context": ["Technical context or setup"],
-  "pending": ["Any open tasks or follow-ups"]
-}
-
-JSON:`;
-
-    const result = await complete(this.model, { 
-      messages: [{ role: 'user', content: prompt }] as any 
-    }, {
-      maxTokens: this.config.summaryMaxTokens,
-      temperature: 0.2,
-    });
-
-    const text = Array.isArray(result.content)
-      ? result.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('')
-      : '';
-    
-    // Try to parse as JSON, fallback to plain text
-    try {
-      const parsed = JSON.parse(text);
-      return JSON.stringify(parsed, null, 2);
-    } catch {
-      return text.trim();
-    }
   }
 
   /**

@@ -93,3 +93,42 @@ export type {
 export { generateStructuredSummary, formatSummaryAsText, createSummaryMessage } from './memory/summary-generator.js';
 export type { ConversationSummary, ToolCallSummary } from './memory/summary-generator.js';
 export { calculateCompactionRange } from './memory/compaction.js';
+
+// P1: Dynamic tool descriptions
+export {
+  DynamicToolDescriptionRenderer,
+  renderToolDescription,
+  getAllToolDescriptions,
+  detectModelCapabilities,
+  detectEnvironmentContext,
+  TOOL_TEMPLATES,
+} from './tools/dynamic-description.js';
+export type {
+  ModelCapabilities,
+  EnvironmentContext,
+  ToolDescriptionTemplate,
+  ToolExample,
+  RenderedToolDescription,
+} from './tools/dynamic-description.js';
+
+// P1: Structured output (XML Element Builder)
+export {
+  Element,
+  XMLParser,
+  StructuredOutput,
+} from './tools/structured-output.js';
+
+// P1: Project context
+export {
+  gatherProjectContext,
+  getProjectContext,
+  formatProjectContextForPrompt,
+  invalidateProjectContext,
+  clearProjectContextCache,
+} from './project-context.js';
+export type {
+  ProjectContext,
+  FileExtensionStats,
+  TechStack,
+  ProjectContextOptions,
+} from './project-context.js';

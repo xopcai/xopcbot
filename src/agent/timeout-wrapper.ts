@@ -85,10 +85,14 @@ export async function executeWithTimeout<T>(
 
   const startTime = Date.now();
   let timeoutId: NodeJS.Timeout | null = null;
+  let isSettled = false;
 
   return new Promise((resolve, reject) => {
     // Set up timeout
     timeoutId = setTimeout(() => {
+      if (isSettled) return;
+      isSettled = true;
+      
       const executionTime = Date.now() - startTime;
       log.error(
         {
@@ -113,6 +117,9 @@ export async function executeWithTimeout<T>(
     // Execute operation
     operation()
       .then(result => {
+        if (isSettled) return;
+        isSettled = true;
+        
         if (timeoutId) {
           clearTimeout(timeoutId);
           timeoutId = null;
@@ -130,6 +137,9 @@ export async function executeWithTimeout<T>(
         resolve(result);
       })
       .catch(error => {
+        if (isSettled) return;
+        isSettled = true;
+        
         if (timeoutId) {
           clearTimeout(timeoutId);
           timeoutId = null;

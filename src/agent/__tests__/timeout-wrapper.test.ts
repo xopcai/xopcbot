@@ -31,9 +31,8 @@ describe('TimeoutWrapper Module', () => {
     });
 
     it('should timeout on slow operation', async () => {
-      const operation = vi.fn().mockImplementation(
-        () => new Promise((resolve) => setTimeout(resolve, 10000))
-      );
+      // Create a promise that never resolves
+      const operation = vi.fn().mockImplementation(() => new Promise(() => {}));
 
       const promise = executeWithTimeout(operation, {
         toolName: 'slow-tool',
@@ -41,16 +40,11 @@ describe('TimeoutWrapper Module', () => {
       });
 
       // Fast-forward past timeout
-      await vi.advanceTimersByTimeAsync(1000);
+      vi.advanceTimersByTime(1000);
 
-      // Wait for the promise to reject
-      try {
-        await promise;
-        expect.fail('Should have thrown TimeoutError');
-      } catch (error) {
-        expect(error).toBeInstanceOf(TimeoutError);
-        expect((error as TimeoutError).toolName).toBe('slow-tool');
-      }
+      // Should reject with TimeoutError
+      await expect(promise).rejects.toThrow(TimeoutError);
+      await expect(promise).rejects.toThrow('slow-tool');
     });
 
     it('should use appropriate timeout for shell tools', async () => {
@@ -61,7 +55,7 @@ describe('TimeoutWrapper Module', () => {
       // Should use shell timeout (5 minutes = 300000ms)
       // We can't easily test this without exposing internals,
       // but we can verify it doesn't timeout immediately
-      await vi.advanceTimersByTimeAsync(1000);
+      vi.advanceTimersByTime(1000);
       expect(operation).toHaveBeenCalled();
     });
 
@@ -71,7 +65,7 @@ describe('TimeoutWrapper Module', () => {
       await executeWithTimeout(operation, { toolName: 'read_file' });
 
       // Should use read timeout (30 seconds)
-      await vi.advanceTimersByTimeAsync(1000);
+      vi.advanceTimersByTime(1000);
       expect(operation).toHaveBeenCalled();
     });
 
@@ -86,7 +80,7 @@ describe('TimeoutWrapper Module', () => {
       expect(result).toBe('success');
 
       // Fast-forward past original timeout to ensure no lingering timers
-      await vi.advanceTimersByTimeAsync(10000);
+      vi.advanceTimersByTime(10000);
     });
 
     it('should clear timeout on error', async () => {
@@ -97,7 +91,7 @@ describe('TimeoutWrapper Module', () => {
       ).rejects.toThrow('operation failed');
 
       // Fast-forward past original timeout
-      await vi.advanceTimersByTimeAsync(10000);
+      vi.advanceTimersByTime(10000);
     });
   });
 
@@ -117,18 +111,16 @@ describe('TimeoutWrapper Module', () => {
     });
 
     it('should return timeout result', async () => {
-      const operation = vi.fn().mockImplementation(
-        () => new Promise((resolve) => setTimeout(resolve, 10000))
-      );
+      // Create a promise that never resolves
+      const operation = vi.fn().mockImplementation(() => new Promise(() => {}));
 
       const promise = executeWithTimeoutResult(operation, {
         toolName: 'test',
         timeoutMs: 1000,
       });
 
-      await vi.advanceTimersByTimeAsync(1000);
-      
-      // Wait for the promise to resolve
+      vi.advanceTimersByTime(1000);
+
       const result = await promise;
 
       expect(result.success).toBe(false);
@@ -183,9 +175,8 @@ describe('TimeoutWrapper Module', () => {
       const manager = new TimeoutManager();
 
       const operation1 = vi.fn().mockResolvedValue('success');
-      const operation2 = vi.fn().mockImplementation(
-        () => new Promise((resolve) => setTimeout(resolve, 10000))
-      );
+      // Create a promise that never resolves
+      const operation2 = vi.fn().mockImplementation(() => new Promise(() => {}));
 
       await manager.execute(operation1, { toolName: 'fast-tool', timeoutMs: 5000 });
 
@@ -193,12 +184,13 @@ describe('TimeoutWrapper Module', () => {
         toolName: 'slow-tool',
         timeoutMs: 1000,
       });
-      await vi.advanceTimersByTimeAsync(1000);
       
-      // Wait for the promise to reject
+      vi.advanceTimersByTime(1000);
+      
+      // Should reject, but we don't care about the error
       try {
         await promise;
-      } catch (error) {
+      } catch {
         // Expected timeout error
       }
 
@@ -220,10 +212,17 @@ describe('TimeoutWrapper Module', () => {
         { toolName: 'test', timeoutMs: 1000 }
       );
 
+      // Verify execution was recorded
+      let stats = manager.getStats();
+      expect(stats.totalExecutions).toBe(1);
+
+      // Advance time by 2ms
+      vi.advanceTimersByTime(2);
+
       // Cleanup records older than 1ms
       manager.cleanup(1);
 
-      const stats = manager.getStats();
+      stats = manager.getStats();
       expect(stats.totalExecutions).toBe(0);
     });
   });

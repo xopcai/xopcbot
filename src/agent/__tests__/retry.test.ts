@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   retryWithBackoff,
   retryWithResult,
@@ -8,19 +8,11 @@ import {
 } from '../retry.js';
 
 describe('Retry Module', () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
   describe('retryWithBackoff', () => {
     it('should succeed on first attempt', async () => {
       const operation = vi.fn().mockResolvedValue('success');
       
-      const result = await retryWithBackoff(operation);
+      const result = await retryWithBackoff(operation, { maxAttempts: 3 });
       
       expect(result).toBe('success');
       expect(operation).toHaveBeenCalledTimes(1);
@@ -31,12 +23,10 @@ describe('Retry Module', () => {
         .mockRejectedValueOnce(new Error('timeout'))
         .mockResolvedValue('success');
       
-      const promise = retryWithBackoff(operation, { initialDelayMs: 1000 });
-      
-      // Fast-forward past the retry delay
-      await vi.advanceTimersByTimeAsync(1000);
-      
-      const result = await promise;
+      const result = await retryWithBackoff(operation, { 
+        maxAttempts: 3, 
+        initialDelayMs: 10 
+      });
       
       expect(result).toBe('success');
       expect(operation).toHaveBeenCalledTimes(2);
@@ -45,51 +35,46 @@ describe('Retry Module', () => {
     it('should throw after max attempts', async () => {
       const operation = vi.fn().mockRejectedValue(new Error('timeout'));
       
-      const promise = retryWithBackoff(operation, { 
-        maxAttempts: 3, 
-        initialDelayMs: 1000 
-      });
+      await expect(
+        retryWithBackoff(operation, { 
+          maxAttempts: 3, 
+          initialDelayMs: 10 
+        })
+      ).rejects.toThrow('timeout');
       
-      // Fast-forward past all retry delays
-      await vi.advanceTimersByTimeAsync(1000);
-      await vi.advanceTimersByTimeAsync(2000);
-      
-      await expect(promise).rejects.toThrow('timeout');
       expect(operation).toHaveBeenCalledTimes(3);
     });
 
     it('should not retry on non-retryable error', async () => {
       const operation = vi.fn().mockRejectedValue(new Error('not found'));
       
-      await expect(retryWithBackoff(operation)).rejects.toThrow('not found');
+      await expect(
+        retryWithBackoff(operation, { maxAttempts: 3 })
+      ).rejects.toThrow('not found');
+      
       expect(operation).toHaveBeenCalledTimes(1);
     });
 
     it('should use exponential backoff', async () => {
+      const delays: number[] = [];
       const operation = vi.fn()
         .mockRejectedValueOnce(new Error('timeout'))
         .mockRejectedValueOnce(new Error('timeout'))
         .mockResolvedValue('success');
       
-      const onRetry = vi.fn();
-      const promise = retryWithBackoff(operation, { 
-        initialDelayMs: 1000,
+      const onRetry = vi.fn((_, __, delayMs) => {
+        delays.push(delayMs);
+      });
+      
+      await retryWithBackoff(operation, { 
+        maxAttempts: 3, 
+        initialDelayMs: 10,
         backoffFactor: 2,
         onRetry,
       });
       
-      // First retry after 1000ms
-      await vi.advanceTimersByTimeAsync(1000);
-      expect(onRetry).toHaveBeenCalledWith(expect.any(Error), 1, expect.any(Number));
-      
-      // Second retry after 2000ms (exponential)
-      await vi.advanceTimersByTimeAsync(2000);
-      
-      await promise;
-      
-      const firstDelay = onRetry.mock.calls[0][2];
-      const secondDelay = onRetry.mock.calls[1][2];
-      expect(secondDelay).toBeGreaterThan(firstDelay * 1.5); // Allow for jitter
+      expect(delays.length).toBe(2);
+      expect(delays[1]).toBeGreaterThan(delays[0] * 1.5); // Allow for jitter
     });
   });
 
@@ -97,7 +82,7 @@ describe('Retry Module', () => {
     it('should return success result', async () => {
       const operation = vi.fn().mockResolvedValue('success');
       
-      const result = await retryWithResult(operation);
+      const result = await retryWithResult(operation, { maxAttempts: 3 });
       
       expect(result.success).toBe(true);
       expect(result.result).toBe('success');
@@ -107,7 +92,7 @@ describe('Retry Module', () => {
     it('should return failure result', async () => {
       const operation = vi.fn().mockRejectedValue(new Error('fatal'));
       
-      const result = await retryWithResult(operation);
+      const result = await retryWithResult(operation, { maxAttempts: 3 });
       
       expect(result.success).toBe(false);
       expect(result.error).toBeInstanceOf(Error);
@@ -121,12 +106,9 @@ describe('Retry Module', () => {
         .mockRejectedValueOnce(new Error('timeout'))
         .mockResolvedValue('success');
       
-      const wrapped = withRetry(fn, { initialDelayMs: 1000 });
+      const wrapped = withRetry(fn, { maxAttempts: 3, initialDelayMs: 10 });
       
-      const promise = wrapped('arg1', 'arg2');
-      await vi.advanceTimersByTimeAsync(1000);
-      
-      const result = await promise;
+      const result = await wrapped('arg1', 'arg2');
       
       expect(result).toBe('success');
       expect(fn).toHaveBeenCalledWith('arg1', 'arg2');
@@ -144,10 +126,8 @@ describe('Retry Module', () => {
       
       const operation2 = vi.fn().mockResolvedValue('success');
       
-      await manager.execute(operation1, { initialDelayMs: 100 });
-      await vi.advanceTimersByTimeAsync(100);
-      
-      await manager.execute(operation2);
+      await manager.execute(operation1, { maxAttempts: 3, initialDelayMs: 10 });
+      await manager.execute(operation2, { maxAttempts: 3 });
       
       const stats = manager.getStats();
       
@@ -158,7 +138,7 @@ describe('Retry Module', () => {
     it('should reset statistics', async () => {
       const manager = new RetryManager();
       
-      await manager.execute(() => Promise.resolve('success'));
+      await manager.execute(() => Promise.resolve('success'), { maxAttempts: 3 });
       manager.resetStats();
       
       const stats = manager.getStats();

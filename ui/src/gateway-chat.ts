@@ -129,9 +129,7 @@ export class XopcbotGatewayChat extends LitElement {
     if (this._chatMessages) {
       this._chatMessages.addEventListener('scroll', this._handleScroll as EventListener);
     }
-
-    // Load session based on current route
-    this._handleRouteChange();
+    // Note: Route handling is done in updated() to avoid duplicate calls
   }
 
   override updated(changedProperties: Map<string, unknown>): void {

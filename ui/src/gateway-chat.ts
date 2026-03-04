@@ -132,12 +132,15 @@ export class XopcbotGatewayChat extends LitElement {
       this._chatMessages.addEventListener('scroll', this._handleScroll as EventListener);
     }
     // Handle initial route on first render
+    console.log('[DEBUG] firstUpdated called, route:', this.route);
     this._handleRouteChange();
     this._routeHandled = true;
   }
 
   override updated(changedProperties: Map<string, unknown>): void {
     super.updated(changedProperties);
+    
+    console.log('[DEBUG] updated called, changedProperties:', [...changedProperties.keys()], 'route:', this.route, '_routeHandled:', this._routeHandled);
     
     // Connect when config changes and disconnected
     if (changedProperties.has('config') && this.config && this._connectionState === 'disconnected') {
@@ -146,6 +149,7 @@ export class XopcbotGatewayChat extends LitElement {
     
     // Reload session when route changes (skip if already handled in firstUpdated)
     if (changedProperties.has('route') && this.route && this._routeHandled) {
+      console.log('[DEBUG] Route changed, calling _handleRouteChange');
       this._handleRouteChange();
     }
   }
@@ -155,6 +159,7 @@ export class XopcbotGatewayChat extends LitElement {
    */
   private async _handleRouteChange(): Promise<void> {
     const route = this.route;
+    console.log('[DEBUG] _handleRouteChange called, route:', route);
     if (!route) return;
 
     // Get target session key from route

@@ -515,6 +515,9 @@ export class SessionStore {
   ): Promise<AgentMessage[]> {
     const compacted = this.compactor.applyCompaction(messages, result);
     
+    // Persist the compacted messages to disk so subsequent loads see the reduced context
+    await this.saveMessages(key, compacted);
+    
     const metadata = await this.getMetadata(key);
     if (metadata) {
       await this.updateMetadata(key, {

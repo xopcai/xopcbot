@@ -858,17 +858,13 @@ private selfVerifyMiddleware: SelfVerifyMiddleware;
 
     log.info({ sessionKey, reason: prep.stats?.reason, usagePercent: prep.stats?.usagePercent }, 'Session needs compaction');
 
-    try {
-      const result = await this.sessionStore.compact(sessionKey, messages, contextWindow);
-      await this.hookHandler.trigger('after_compaction', {
-        messageCount: messages.length,
-        tokenCount: result.tokensBefore,
-        compactedCount: messages.length - result.firstKeptIndex,
-      });
-      log.info({ sessionKey, tokensBefore: result.tokensBefore, tokensAfter: result.tokensAfter }, 'Session compacted');
-    } catch (error) {
-      log.error({ err: error, sessionKey }, 'Failed to compact session');
-    }
+    const result = await this.sessionStore.compact(sessionKey, messages, contextWindow);
+    await this.hookHandler.trigger('after_compaction', {
+      messageCount: messages.length,
+      tokenCount: result.tokensBefore,
+      compactedCount: messages.length - result.firstKeptIndex,
+    });
+    log.info({ sessionKey, tokensBefore: result.tokensBefore, tokensAfter: result.tokensAfter }, 'Session compacted');
   }
 
   private getContextWindow(): number {

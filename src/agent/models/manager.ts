@@ -198,9 +198,22 @@ export class ModelManager {
         this.currentProvider = candidate.provider;
         this.currentModelName = candidate.model;
 
-        // Execute the prompt
-        await agent.prompt(userMessage);
-        await agent.waitForIdle();
+        // Execute the prompt with timeout to prevent infinite hangs
+        const AGENT_TURN_TIMEOUT_MS = 120_000; // 2 minutes
+
+        const turnPromise = (async () => {
+          await agent.prompt(userMessage);
+          await agent.waitForIdle();
+        })();
+
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error(`Agent turn timed out after ${AGENT_TURN_TIMEOUT_MS / 1000}s`)),
+            AGENT_TURN_TIMEOUT_MS
+          )
+        );
+
+        await Promise.race([turnPromise, timeoutPromise]);
 
         // Get usage from agent state if available
         const usage = (agent.state as any).lastUsage || undefined;

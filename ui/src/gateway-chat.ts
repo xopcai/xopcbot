@@ -155,18 +155,13 @@ export class XopcbotGatewayChat extends LitElement {
     const route = this.route;
     if (!route) return;
 
-    // Prevent race condition - if already loading, skip
-    if (this._isLoadingSession) return;
-
     // Get target session key from route
     let targetSessionKey: string | null = null;
 
     switch (route.type) {
       case 'recent':
-        // Reset last loaded key to force reload of most recent session
-        this._lastLoadedSessionKey = null;
-        // Load recent sessions - this will load the most recent one
-        await this._loadSessions();
+        // Load recent sessions with autoLoad=true to load the most recent one
+        await this._loadSessions(true);
         return;
       case 'session':
         targetSessionKey = route.sessionKey;
@@ -176,12 +171,11 @@ export class XopcbotGatewayChat extends LitElement {
         return;
     }
 
-    // If we have a target session, load it directly
+    // If we have a target session, load it directly (force reload even if same session)
     if (targetSessionKey) {
-      if (targetSessionKey !== this._lastLoadedSessionKey) {
-        await this._loadSession(targetSessionKey, 0); // Load with offset 0
-        this._lastLoadedSessionKey = targetSessionKey;
-      }
+      this._lastLoadedSessionKey = null; // Clear cache to force reload
+      await this._loadSession(targetSessionKey, 0);
+      this._lastLoadedSessionKey = targetSessionKey;
     }
   }
 
@@ -190,8 +184,13 @@ export class XopcbotGatewayChat extends LitElement {
    */
   private async _loadSession(sessionKey: string, offset = 0): Promise<void> {
     if (!this.config) return;
+
+    // For initial load (offset=0), allow interrupting previous loads
+    if (offset === 0) {
+      this._isLoadingSession = false;
+    }
     
-    // Prevent race condition
+    // Only apply race condition protection for pagination loads
     if (this._isLoadingSession) return;
     this._isLoadingSession = true;
 
@@ -320,10 +319,8 @@ export class XopcbotGatewayChat extends LitElement {
         this._error = null;
         this._reconnectCount = 0;
         this.requestUpdate();
-        // Load sessions after connection is established (only if not already loaded)
-        if (!this._lastLoadedSessionKey) {
-          this._loadSessions();
-        }
+        // Only refresh session list, don't auto-load
+        this._loadSessions(false);
       };
 
       // Also listen for our custom 'connected' event from the server
@@ -413,7 +410,7 @@ export class XopcbotGatewayChat extends LitElement {
 
   // ========== Session management ==========
 
-  private async _loadSessions(): Promise<void> {
+  private async _loadSessions(autoLoad = false): Promise<void> {
     if (!this.config) {
       return;
     }
@@ -434,6 +431,11 @@ export class XopcbotGatewayChat extends LitElement {
         .sort((a: any, b: any) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
       this._sessions = gatewaySessions;
+
+      // Only auto-load if explicitly requested
+      if (!autoLoad) {
+        return;
+      }
 
       // Filter out empty sessions and get sessions with messages
       const sessionsWithMessages = gatewaySessions.filter((s: any) => s.messageCount > 0);

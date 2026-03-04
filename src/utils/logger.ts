@@ -114,6 +114,9 @@ function createLogStream(filePath: string): ReturnType<typeof createWriteStream>
   return createWriteStream(filePath, { flags: 'a', encoding: 'utf-8' });
 }
 
+// Store file stream references for later cleanup
+const fileStreams: ReturnType<typeof createWriteStream>[] = [];
+
 // Create streams
 const streams: Array<{ stream: DestinationStream | NodeJS.WriteStream; level: LogLevel }> = [];
 
@@ -125,15 +128,19 @@ if (config.consoleOutput) {
 }
 
 if (config.fileOutput) {
+  const appStream = createLogStream(getLogPath('app'));
+  fileStreams.push(appStream); // Store stream reference for cleanup
   streams.push({
-    stream: createLogStream(getLogPath('app')) as unknown as DestinationStream,
+    stream: appStream as unknown as DestinationStream,
     level: config.level,
   });
 }
 
 if (config.errorFileOutput) {
+  const errorStream = createLogStream(getLogPath('error'));
+  fileStreams.push(errorStream); // Store stream reference for cleanup
   streams.push({
-    stream: createLogStream(getLogPath('error')) as unknown as DestinationStream,
+    stream: errorStream as unknown as DestinationStream,
     level: 'error',
   });
 }
@@ -432,21 +439,39 @@ export function getLoggerConfig(): Readonly<LoggerConfig> {
 let shutdownHandler: (() => Promise<void>) | null = null;
 
 /**
+ * Flush and close all file streams
+ * This must be called before process exit to release file handles
+ */
+export async function flushAndClose(): Promise<void> {
+  try {
+    // Flush pino logger
+    baseLogger.flush();
+    // Close all file streams
+    await Promise.all(
+      fileStreams.map(
+        (stream) =>
+          new Promise<void>((resolve) => {
+            if (stream.writable) {
+              stream.end(() => resolve());
+            } else {
+              resolve();
+            }
+          }),
+      ),
+    );
+  } catch (error) {
+    // Ignore errors during shutdown
+  }
+}
+
+/**
  * Register shutdown handler to flush logs
  */
 export function registerShutdownHandler(): void {
   if (shutdownHandler) return;
 
   shutdownHandler = async () => {
-    try {
-      // Flush any pending logs
-      await new Promise<void>((resolve) => {
-        baseLogger.flush();
-        setTimeout(resolve, 100);
-      });
-    } catch {
-      // Ignore flush errors on shutdown
-    }
+    await flushAndClose(); // Call flushAndClose instead of just flush
   };
 
   process.on('SIGINT', shutdownHandler);

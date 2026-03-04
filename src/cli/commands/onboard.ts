@@ -433,7 +433,7 @@ async function doOAuthLogin(provider: string): Promise<boolean> {
 }
 
 // TODO: Remove old OAuth login code below this line
-async function doOAuthLoginOld(provider: string): Promise<boolean> {
+async function _doOAuthLoginOld(provider: string): Promise<boolean> {
   console.log('\n🔐 Starting OAuth login...');
 
   if (provider === 'anthropic') {

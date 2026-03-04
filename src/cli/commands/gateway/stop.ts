@@ -5,7 +5,7 @@ import { getContextWithOpts } from '../../index.js';
 import { acquireGatewayLock } from '../../../gateway/lock.js';
 import { forceFreePortAndWait, listPortListeners } from '../../../gateway/ports.js';
 
-const log = createLogger('GatewayStopCommand');
+const _log = createLogger('GatewayStopCommand');
 
 /**
  * Create stop subcommand

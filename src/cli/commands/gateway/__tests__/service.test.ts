@@ -5,7 +5,7 @@ import {
   createServiceStartCommand,
   createServiceStatusCommand,
 } from '../service.js';
-import { loadConfig, DEFAULT_PATHS } from '../../../../config/index.js';
+import { loadConfig } from '../../../../config/index.js';
 import { resolveGatewayService, isDaemonAvailableAsync, getPlatformName } from '../../../../daemon/index.js';
 import { buildGatewayInstallPlan } from '../../../../daemon/install-plan.js';
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createTokenCommand } from '../token.js';
-import { loadConfig, saveConfig, DEFAULT_PATHS } from '../../../../config/index.js';
+import { loadConfig, saveConfig } from '../../../../config/index.js';
 
 // Mock dependencies
 vi.mock('../../../../config/index.js', () => ({

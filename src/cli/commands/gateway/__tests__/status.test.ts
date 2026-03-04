@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createStatusCommand } from '../status.js';
-import { loadConfig, DEFAULT_PATHS } from '../../../../config/index.js';
-import { acquireGatewayLock, GatewayLockError } from '../../../../gateway/lock.js';
+import { loadConfig } from '../../../../config/index.js';
+import { acquireGatewayLock } from '../../../../gateway/lock.js';
 
 // Mock dependencies
 vi.mock('../../../../config/index.js', () => ({

@@ -3,7 +3,7 @@ import { createLogger } from '../../../utils/logger.js';
 import { getContextWithOpts } from '../../index.js';
 import { spawn } from 'child_process';
 
-const log = createLogger('GatewayLogsCommand');
+const _log = createLogger('GatewayLogsCommand');
 
 /**
  * Create logs subcommand

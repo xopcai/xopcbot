@@ -459,7 +459,7 @@ export async function flushAndClose(): Promise<void> {
           }),
       ),
     );
-  } catch (error) {
+  } catch {
     // Ignore errors during shutdown
   }
 }

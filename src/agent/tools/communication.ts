@@ -12,6 +12,12 @@ const MessageSendSchema = Type.Object({
     audio: 'audio',
     document: 'document',
   }, { description: 'Type of media to send' })),
+  format: Type.Optional(Type.Enum({
+    text: 'text',
+    voice: 'voice',
+  }, { 
+    description: 'Message format: "text" for text message, "voice" for voice message (TTS). Use "voice" when the message is long, emotional, or better suited for spoken communication.' 
+  })),
 });
 
 interface MessageContext {
@@ -25,7 +31,23 @@ export function createMessageTool(
 ): AgentTool<typeof MessageSendSchema, {}> {
   return {
     name: 'send_message',
-    description: 'Send a message to the current conversation.',
+    description: `Send a message to the current conversation.
+
+**When to use voice format:**
+- For long or detailed explanations (voice is more natural)
+- When expressing emotions or empathy
+- For storytelling or narrative content
+- When the user seems busy or prefers listening
+- For urgent or important notifications
+
+**When to use text format:**
+- For short, factual responses
+- When sharing code, URLs, or structured data
+- When the user needs to copy/paste content
+- For step-by-step instructions that need reference
+
+Default to text unless voice would significantly improve the user experience.`,
+
     parameters: MessageSendSchema,
     label: '💬 Send Message',
 
@@ -49,14 +71,17 @@ export function createMessageTool(
           content: params.content,
           mediaUrl: params.mediaUrl,
           mediaType: params.mediaType as 'photo' | 'video' | 'audio' | 'document' | undefined,
+          // Enable TTS when format is 'voice'
+          tts: params.format === 'voice',
         };
 
         await bus.publishOutbound(msg);
 
+        const formatInfo = params.format === 'voice' ? ' (as voice message)' : '';
         const mediaInfo = params.mediaUrl ? ` (with ${params.mediaType || 'media'})` : '';
         return {
-          content: [{ type: 'text', text: `Message sent successfully${mediaInfo}` }],
-          details: {},
+          content: [{ type: 'text', text: `Message sent successfully${formatInfo}${mediaInfo}` }],
+          details: { format: params.format || 'text', tts: msg.tts },
         };
       } catch (error) {
         return {

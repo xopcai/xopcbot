@@ -32,6 +32,7 @@ export async function register(api: ExtensionApi): Promise<void> {
     pythonPath?: string;
     maxConcurrentRuns?: number;
     cacheTtlMs?: number;
+    workspaceDir?: string;
   };
 
   const maxConcurrentRuns = config.maxConcurrentRuns || 5;
@@ -39,7 +40,9 @@ export async function register(api: ExtensionApi): Promise<void> {
 
   // Initialize services
   const harborCli = new HarborCli(config.pythonPath || 'python3');
-  const runTracker = new RunTracker('/tmp'); // Simplified - in real impl, use workspace dir
+  // Use workspace dir from config or fallback to temp
+  const workspaceDir = config.workspaceDir || '/tmp/harbor';
+  const runTracker = new RunTracker(workspaceDir);
   const cache = new HarborCache({ defaultTtlMs: cacheTtlMs, maxSize: 50 });
 
   // Check Harbor installation
@@ -74,6 +77,11 @@ export async function register(api: ExtensionApi): Promise<void> {
 
       const dataset = params.dataset as string;
       if (!dataset) return '❌ dataset is required';
+      
+      // Validate dataset format (basic security)
+      if (!/^[a-zA-Z0-9@._-]+$/.test(dataset)) {
+        return '❌ Invalid dataset format. Use format like: terminal-bench@2.0';
+      }
 
       // Check concurrency
       if (runTracker.getActiveRunCount() >= maxConcurrentRuns) {
@@ -108,7 +116,10 @@ export async function register(api: ExtensionApi): Promise<void> {
 
 Use \`harbor_status\` with runId to check progress.`;
       } catch (error) {
-        return `❌ Harbor run failed: ${error instanceof Error ? error.message : String(error)}`;
+        const msg = error instanceof Error ? error.message : String(error);
+        // Log full error internally, show simplified message to user
+        log.error({ err: error }, 'harbor_run failed');
+        return `❌ Harbor run failed: ${msg.slice(0, 200)}`;
       }
     },
   });
@@ -120,23 +131,39 @@ Use \`harbor_status\` with runId to check progress.`;
     parameters: {
       type: 'object',
       properties: {
-        category: { type: 'string', description: 'Filter by category' },
+        category: { type: 'string', description: 'Filter by category (e.g., coding, reasoning)' },
       },
       required: [],
     },
-    execute: async (): Promise<string> => {
+    execute: async (params: Record<string, unknown>): Promise<string> => {
       if (!harborAvailable) {
         return '❌ Harbor CLI not installed';
       }
 
+      const category = params.category as string | undefined;
+
       try {
-        const datasets = await harborCli.listDatasets();
+        let datasets = await harborCli.listDatasets();
+        
+        // Filter by category if specified
+        if (category) {
+          datasets = datasets.filter(d => 
+            d.category.toLowerCase().includes(category.toLowerCase())
+          );
+        }
+
         const formatted = datasets
           .map((d) => `**${d.name}** (\`${d.id}\`) - ${d.tasksCount} tasks - ${d.category}`)
           .join('\n');
-        return `📊 Available Harbor Datasets (${datasets.length})\n\n${formatted}`;
+        
+        const header = category 
+          ? `📊 Harbor Datasets (category: ${category})`
+          : `📊 Available Harbor Datasets`;
+          
+        return `${header} (${datasets.length})\n\n${formatted}`;
       } catch (error) {
-        return `❌ Failed to list datasets: ${error instanceof Error ? error.message : String(error)}`;
+        log.error({ err: error }, 'harbor_datasets failed');
+        return `❌ Failed to list datasets`;
       }
     },
   });

@@ -13,6 +13,11 @@ const execAsync = promisify(exec);
 
 const log = createLogger('HarborCli');
 
+// Retry configuration constants
+const DEFAULT_MAX_RETRIES = 3;
+const DEFAULT_RETRY_DELAY_MS = 2000;
+const LONG_RETRY_DELAY_MS = 3000;
+
 /**
  * Sleep utility for retry delays
  */
@@ -267,8 +272,8 @@ export class HarborCli {
         return this.parseRunResult(stdout, options);
       },
       {
-        maxRetries: 3,
-        retryDelayMs: 3000,
+        maxRetries: DEFAULT_MAX_RETRIES,
+        retryDelayMs: LONG_RETRY_DELAY_MS,
         retryableErrors: ['timeout', 'container failed', 'connection refused'],
       },
       `harbor run --dataset ${options.dataset}`
@@ -288,7 +293,7 @@ export class HarborCli {
         );
         return JSON.parse(stdout);
       },
-      { maxRetries: 2, retryDelayMs: 1000 },
+      { maxRetries: 2, retryDelayMs: DEFAULT_RETRY_DELAY_MS / 2 },
       'harbor datasets list'
     );
   }
@@ -306,7 +311,7 @@ export class HarborCli {
         );
         return JSON.parse(stdout);
       },
-      { maxRetries: 2, retryDelayMs: 1000 },
+      { maxRetries: 2, retryDelayMs: DEFAULT_RETRY_DELAY_MS / 2 },
       `harbor results ${runId}`
     );
   }
@@ -324,7 +329,7 @@ export class HarborCli {
         );
         return JSON.parse(stdout);
       },
-      { maxRetries: 2, retryDelayMs: 1000 },
+      { maxRetries: 2, retryDelayMs: DEFAULT_RETRY_DELAY_MS / 2 },
       `harbor status ${runId}`
     );
   }
@@ -339,7 +344,7 @@ export class HarborCli {
       async () => {
         await execAsync(`${this.pythonPath} -m harbor stop ${runId}`);
       },
-      { maxRetries: 2, retryDelayMs: 1000 },
+      { maxRetries: 2, retryDelayMs: DEFAULT_RETRY_DELAY_MS / 2 },
       `harbor stop ${runId}`
     );
   }
@@ -350,7 +355,9 @@ export class HarborCli {
   private parseRunResult(stdout: string, options: HarborRunOptions): HarborRunResult {
     // Generate a unique run ID with timestamp and random suffix
     const randomSuffix = randomBytes(4).toString('hex');
-    const runId = `harbor-${Date.now()}-${randomSuffix}-${options.dataset.replace(/[^a-z0-9]/gi, '-').slice(0, 50)}`;
+    // Shorten dataset name to keep run ID reasonable length
+    const datasetSlug = options.dataset.replace(/[^a-z0-9]/gi, '-').slice(0, 30);
+    const runId = `harbor-${Date.now()}-${randomSuffix}-${datasetSlug}`;
     
     // Try to parse JSON output first
     try {

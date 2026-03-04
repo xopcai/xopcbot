@@ -84,7 +84,9 @@ function analyzeContent(content: string): {
   const length = content.length;
   const hasCode = /```|`[^`]+`|\b(function|class|const|let|var|if|for|while)\b/.test(content);
   const hasURL = /https?:\/\/\S+/.test(content);
-  const hasEmotion = /[!?]{2,}|\b(love|hate|amazing|terrible|wonderful|awful|excited|worried|sorry|congratulations)\b/i.test(content);
+  // Detect emotion markers
+  // Matches: multiple punctuation, emotional words (EN/CN)
+  const hasEmotion = /[!?]{2,}[^`\n]|\b(love|hate|sorry|congratulations|thanks|great|awesome|sad|happy|worried|excited|amazing|terrible|wonderful|awful)\b|\b(谢谢|抱歉|对不起|恭喜|太棒|难过|开心|兴奋|担心|生气)\b/.test(content);
   const isStructured = /^(\d+\.\s|\-\s|\*\s|#{1,6}\s)/m.test(content);
 
   return { length, hasCode, hasURL, hasEmotion, isStructured };

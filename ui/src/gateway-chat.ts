@@ -239,9 +239,12 @@ export class XopcbotGatewayChat extends LitElement {
           timestamp: msg.timestamp ? new Date(msg.timestamp).getTime() : Date.now(),
         }));
       
-      // Handle pagination - prepend if loading older messages
+      // For pagination (offset > 0), preserve existing messages
       if (offset > 0) {
-        this._messages = [...newMessages, ...this._messages];
+        // Avoid duplicate messages by filtering out existing ones based on timestamp
+        const existingTimestamps = new Set(this._messages.map(m => m.timestamp));
+        const uniqueNewMessages = newMessages.filter((m: Message) => !existingTimestamps.has(m.timestamp));
+        this._messages = [...uniqueNewMessages, ...this._messages];
       } else {
         this._messages = newMessages;
       }

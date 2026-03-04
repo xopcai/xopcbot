@@ -71,10 +71,6 @@ export class XopcbotApp extends LitElement {
   get gatewayConfig() { return this._gatewayConfig; }
   set gatewayConfig(value) { this._gatewayConfig = value || { url: window.location.origin }; }
 
-  constructor() {
-    super();
-  }
-
   private _initializeToken(): void {
     // Check URL for token parameter
     const urlParams = new URLSearchParams(window.location.search);

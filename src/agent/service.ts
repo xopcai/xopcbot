@@ -7,12 +7,12 @@
 
 import { readFileSync } from 'fs';
 import { Agent, type AgentEvent, type AgentMessage } from '@mariozechner/pi-agent-core';
-import type { Model, Api } from '@mariozechner/pi-ai';
+import type { Model, Api, Usage } from '@mariozechner/pi-ai';
 import type { MessageBus, InboundMessage } from '../bus/index.js';
 import type { Config, AgentDefaults } from '../config/schema.js';
 import type { ChannelManager } from '../channels/manager.js';
 
-import { resolveModel, DEFAULT_MODEL, getApiKey as getProviderApiKey, getAllProviders, isProviderConfigured, getModelsByProvider, getProviderDisplayName } from '../providers/index.js';
+import { resolveModel, getDefaultModel, getApiKey as getProviderApiKey, getAllProviders, isProviderConfigured, getModelsByProvider, getProviderDisplayName } from '../providers/index.js';
 import { SessionStore, type CompactionConfig, type WindowConfig } from '../session/index.js';
 import { createSkillLoader, type Skill } from './skills/index.js';
 import { getBundledSkillsDir } from '../config/paths.js';
@@ -20,7 +20,7 @@ import { createLogger } from '../utils/logger.js';
 import { ExtensionRegistryImpl as ExtensionRegistry, ExtensionHookRunner } from '../extensions/index.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import { createTypingController } from './typing.js';
-import { loadBootstrapFiles, extractTextContent, type BootstrapFile } from './helpers.js';
+import { loadBootstrapFiles, extractTextContent, type BootstrapFile, toWorkspaceBootstrapFile } from './helpers.js';
 import { SessionTracker } from './session-tracker.js';
 import { ModelManager } from './models/index.js';
 import { initializeCommands } from '../commands/index.js';
@@ -33,6 +33,7 @@ import { SystemReminder } from './system-reminder.js';
 import { ToolUsageAnalyzer } from './tool-usage-analyzer.js';
 import { ToolChainTracker } from './tool-chain-tracker.js';
 import { ErrorPatternMatcher } from './error-pattern-matcher.js';
+import { SelfVerifyMiddleware } from './middleware/self-verify.js';
 
 const log = createLogger('AgentService');
 
@@ -86,10 +87,11 @@ export class AgentService {
   private toolsFactory: AgentToolsFactory;
   private errorTracker: ToolErrorTracker;
   private requestLimiter: RequestLimiter;
-  private systemReminder: SystemReminder;
+private systemReminder: SystemReminder;
   private toolUsageAnalyzer: ToolUsageAnalyzer;
   private toolChainTracker: ToolChainTracker;
   private errorPatternMatcher: ErrorPatternMatcher;
+private selfVerifyMiddleware: SelfVerifyMiddleware;
 
   // Stream handle for current context (for progress updates)
   private currentStreamHandle: {
@@ -188,11 +190,13 @@ export class AgentService {
       try {
         model = resolveModel(config.model);
       } catch {
-        log.warn({ model: config.model }, 'Model not found, using default');
-        model = resolveModel(DEFAULT_MODEL);
+        const defaultModel = getDefaultModel(config.config);
+        log.warn({ model: config.model, defaultModel }, 'Model not found, using default');
+        model = resolveModel(defaultModel);
       }
     } else {
-      model = resolveModel(DEFAULT_MODEL);
+      const defaultModel = getDefaultModel(config.config);
+      model = resolveModel(defaultModel);
     }
 
     this.agent = new Agent({
@@ -232,6 +236,14 @@ export class AgentService {
       maxFailuresPerTool: defaults?.maxToolFailuresPerTurn || 3,
       maxTotalFailures: defaults?.maxToolFailuresPerTurn ? defaults.maxToolFailuresPerTurn + 2 : 5,
       resetOnTurnEnd: true,
+    });
+
+    // Initialize self-verify middleware for harness engineering
+    this.selfVerifyMiddleware = new SelfVerifyMiddleware({
+      maxEditsPerFile: 5,
+      enablePreCompletionCheck: true,
+      minTurnsForVerification: 4,
+      resetOnVerification: true,
     });
     
     this.requestLimiter = new RequestLimiter({
@@ -1056,8 +1068,7 @@ export class AgentService {
         log.debug({ tool: event.toolName, args: event.args }, 'Tool execution started');
         // Trigger progress manager to send feedback
         this.progressManager.onToolStart(event.toolName, event.args || {});
-        
-        // ✅ Harness Optimization: Record tool call in chain
+// ✅ Harness Optimization: Record tool call in chain
         if (this.currentContext) {
           this.toolChainTracker.recordCall(
             this.currentContext.sessionKey,
@@ -1066,6 +1077,8 @@ export class AgentService {
             0
           );
         }
+// Track file edits for self-verify middleware (harness engineering)
+        this.trackFileEditForSelfVerify(event.toolName, event.args);
         break;
       case 'tool_execution_update':
         // Send tool update feedback (streaming)
@@ -1075,10 +1088,8 @@ export class AgentService {
         log.debug({ tool: event.toolName, isError: event.isError }, 'Tool execution complete');
         // Trigger progress manager for tool end
         this.progressManager.onToolEnd(event.toolName, event.result, event.isError);
-        
-        // ✅ Harness Optimization: Append system reminder to tool result
+// ✅ Harness Optimization: Append system reminder to tool result
         event.result = this.systemReminder.appendToResult(event.result);
-        
         // ✅ Harness Optimization: Record tool usage for analytics
         const durationMs = (event as any).durationMs || 0;
         this.toolUsageAnalyzer.recordUsage(
@@ -1086,7 +1097,6 @@ export class AgentService {
           !event.isError,
           durationMs
         );
-        
         // ✅ Harness Optimization: Record tool result in chain
         if (this.currentContext) {
           // Find the last node for this tool call
@@ -1104,13 +1114,13 @@ export class AgentService {
             }
           }
         }
-        
+// Track file edits for self-verify middleware (harness engineering)
+        // Note: args are not available on tool_execution_end, we track at tool_execution_start
         // Track tool errors
         if (event.isError) {
           const errorText = this.extractErrorFromResult(event.result);
           this.errorTracker.recordFailure(event.toolName, errorText);
-          
-          // ✅ Harness Optimization: Match error pattern and provide recovery suggestion
+// ✅ Harness Optimization: Match error pattern and provide recovery suggestion
           const errorMatch = this.errorPatternMatcher.matchError(errorText);
           if (errorMatch.matched && errorMatch.pattern) {
             // Append recovery suggestion to result
@@ -1123,25 +1133,23 @@ export class AgentService {
                 ];
               }
             }
-            
             log.warn(
               { tool: event.toolName, pattern: errorMatch.pattern.name, severity: errorMatch.pattern.severity },
               'Matched error pattern'
             );
           }
-          
           // ✅ Enhanced: Notify about accumulated errors
           const failureCount = this.errorTracker.getFailureCount(event.toolName);
           const maxFailures = this.errorTracker.getConfig().maxFailuresPerTool;
           const remaining = this.errorTracker.remainingAttempts(event.toolName);
-          
+
           this.progressManager.onToolErrorAccumulated(
             event.toolName,
             failureCount,
             maxFailures,
             remaining
           );
-          
+
           // Check if limits are reached
           if (this.errorTracker.isToolLimitReached(event.toolName)) {
             log.warn(
@@ -1149,7 +1157,7 @@ export class AgentService {
               'Tool reached failure limit'
             );
           }
-          
+
           if (this.errorTracker.isTotalLimitReached()) {
             log.warn(
               { totalFailures: this.errorTracker.getSummary().total },
@@ -1163,16 +1171,22 @@ export class AgentService {
         // Reset reliability counters
         this.errorTracker.reset();
         this.requestLimiter.reset();
-        this.systemReminder.resetTurn();
-        
+this.systemReminder.resetTurn();
         // ✅ Harness Optimization: End tool chain tracking
         if (this.currentContext) {
           this.toolChainTracker.endChain(this.currentContext.sessionKey);
         }
+// Reset self-verify middleware for new turn
+        this.selfVerifyMiddleware.onTurnStart();
         break;
       case 'agent_end':
         log.debug('Agent turn ended');
         this.progressManager.onAgentEnd();
+        // Log self-verify summary for debugging
+        const editSummary = this.selfVerifyMiddleware.getEditSummary();
+        if (editSummary.totalEdits > 0) {
+          log.debug({ editSummary }, 'Self-verify edit summary');
+        }
         break;
     }
   }
@@ -1208,6 +1222,53 @@ export class AgentService {
     return 'Unknown error';
   }
 
+  /**
+   * Track file edits for self-verify middleware (harness engineering)
+   * Records write/edit/shell operations to detect excessive editing patterns
+   */
+  private trackFileEditForSelfVerify(
+    toolName: string,
+    args: Record<string, unknown> | undefined
+  ): void {
+    const normalizedName = toolName.toLowerCase();
+
+    // Track write_file operations
+    if (normalizedName.includes('write') && args?.path) {
+      this.selfVerifyMiddleware.recordEdit(String(args.path), 'write');
+      return;
+    }
+
+    // Track edit_file operations
+    if (normalizedName.includes('edit') && args?.path) {
+      this.selfVerifyMiddleware.recordEdit(String(args.path), 'edit');
+      return;
+    }
+
+    // Track shell commands that might modify files (build/test commands)
+    if (normalizedName.includes('shell') && args?.command) {
+      const cmd = String(args.command);
+      // Detect build/test commands that indicate verification attempts
+      const buildPatterns = [
+        /^(npm|pnpm|yarn)\s+(run\s+)?(build|test|check|lint)/i,
+        /^node\s+.*test/i,
+        /^vitest/i,
+        /^jest/i,
+        /^pytest/i,
+        /^make\s+(build|test|check)/i,
+        /^cargo\s+(build|test|check)/i,
+        /^go\s+(build|test)/i,
+      ];
+
+      for (const pattern of buildPatterns) {
+        if (pattern.test(cmd)) {
+          // Record as shell operation on workspace (general build/verify)
+          this.selfVerifyMiddleware.recordEdit('(build/verify)', 'shell');
+          break;
+        }
+      }
+    }
+  }
+
   private getLastAssistantContent(): string | null {
     const messages = this.agent.state.messages;
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -1238,11 +1299,14 @@ export class AgentService {
       }
     }
 
-    // Cast BootstrapFile[] to WorkspaceBootstrapFile[] for compatibility
+    // Convert BootstrapFile[] to WorkspaceBootstrapFile[] format
+    const workspaceBootstrapFiles = this.bootstrapFiles.map(f => 
+      toWorkspaceBootstrapFile(f, this.config.workspace)
+    );
     const prompt = buildSystemPrompt(
       this.config.workspace,
       {
-        bootstrapFiles: this.bootstrapFiles as any,
+        bootstrapFiles: workspaceBootstrapFiles,
         heartbeatEnabled,
         availableTools: this.skills.map(s => s.name),
         userTimezone,
@@ -1333,7 +1397,7 @@ export class AgentService {
     // Create command context
     const cmdCtx = createCommandContext({
       sessionKey: context.sessionKey,
-      source: context.channel as any,
+      source: context.channel as 'telegram' | 'webui' | 'cli' | 'api' | 'system' | 'gateway',
       channelId: context.channel,
       chatId: context.chatId,
       senderId: context.senderId,
@@ -1394,8 +1458,9 @@ export class AgentService {
 
         for (const msg of messages) {
           if ('usage' in msg && msg.usage) {
-            promptTokens += (msg.usage as any).input || 0;
-            completionTokens += (msg.usage as any).output || 0;
+            const usage = msg.usage as unknown as Usage;
+            promptTokens += usage.input || 0;
+            completionTokens += usage.output || 0;
           }
         }
 
@@ -1424,3 +1489,4 @@ export class AgentService {
     return true;
   }
 }
+

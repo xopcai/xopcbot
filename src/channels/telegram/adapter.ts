@@ -64,8 +64,8 @@ export class TelegramAdapter implements ChannelAdapter {
     const chatId = String(chat.id);
     const senderId = String(from.id);
     const isGroup = chat.type === 'group' || chat.type === 'supergroup';
-    const threadId = (message as any).message_thread_id
-      ? String((message as any).message_thread_id)
+    const threadId = (message as { message_thread_id?: number }).message_thread_id
+      ? String((message as { message_thread_id?: number }).message_thread_id)
       : undefined;
 
     // Get content
@@ -174,7 +174,7 @@ export class TelegramAdapter implements ChannelAdapter {
       messageId: String(message.message_id),
       threadId,
       isGroup,
-      isForum: chat.type === 'supergroup' && (chat as any).is_forum,
+      isForum: chat.type === 'supergroup' && (chat as { is_forum?: boolean }).is_forum === true,
       botUsername: ctx.me?.username,
       raw: ctx,
     };

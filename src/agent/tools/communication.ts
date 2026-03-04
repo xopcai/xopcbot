@@ -91,15 +91,27 @@ function analyzeContent(content: string): {
 }
 
 /**
+ * Maximum content length for TTS (to prevent failures)
+ */
+const MAX_TTS_LENGTH = 3000;
+
+/**
  * Intelligent message format selection
  * Combines agent intent with content analysis and system context
  */
 function selectMessageFormat(
   intent: string,
-  content: string,
+  contentAnalysis: ReturnType<typeof analyzeContent>,
   contextHints?: Static<typeof ContentContextSchema>
 ): { format: 'text' | 'voice'; reason: string; tts: boolean } {
-  const contentAnalysis = analyzeContent(content);
+  // Check length limit for TTS
+  if (contentAnalysis.length > MAX_TTS_LENGTH) {
+    return { 
+      format: 'text', 
+      reason: 'Content too long for TTS',
+      tts: false 
+    };
+  }
 
   // 1. Honor explicit intent first
   switch (intent) {
@@ -209,30 +221,16 @@ export function createMessageTool(
 ): AgentTool<typeof MessageSendSchema, {}> {
   return {
     name: 'send_message',
-    description: `Send a message to the current conversation.
+    description: `Send message with intelligent format selection.
 
-**Recommended approach:**
-Use 'intent' to express your communication goal, and let the system optimize the delivery format.
+Intents (use 'default' for most cases):
+- default: Auto-select based on content
+- text: Code, URLs, reference material
+- voice: Emotional, storytelling, hands-free
+- urgent: Important notifications
+- whisper: Private/sensitive
 
-**Intent guidelines:**
-- 'default' (recommended): Let system decide based on content. Use for most messages.
-- 'text': When sharing code, URLs, or content the user needs to copy/reference.
-- 'voice': For emotional content, storytelling, or when you know user is hands-free.
-- 'urgent': For important notifications. System will choose best format (voice if user busy).
-- 'whisper': For private/sensitive content (uses text with subtle notification).
-
-**Context hints (optional):**
-Provide context hints to help the system make better decisions:
-- containsCode: true - if message has code
-- containsURL: true - if message has links
-- emotional: true - if expressing feelings
-- userBusy: true - if you know user is driving/in meeting
-
-**Examples:**
-- Simple response: { content: "Hello!", intent: "default" }
-- Code sharing: { content: "Here's the fix...", intent: "text", context: { containsCode: true } }
-- Emotional support: { content: "I'm so sorry to hear...", intent: "voice", context: { emotional: true } }
-- Urgent alert: { content: "Server is down!", intent: "urgent" }`,
+Context hints (optional): containsCode, containsURL, emotional, userBusy`,
 
     parameters: MessageSendSchema,
     label: '💬 Send Message',
@@ -251,10 +249,13 @@ Provide context hints to help the system make better decisions:
       }
 
       try {
+        // Analyze content once and reuse
+        const contentAnalysis = analyzeContent(params.content);
+        
         // Intelligent format selection
         const formatDecision = selectMessageFormat(
           params.intent || 'default',
-          params.content,
+          contentAnalysis,
           params.context
         );
 
@@ -282,7 +283,7 @@ Provide context hints to help the system make better decisions:
             format: formatDecision.format,
             tts: formatDecision.tts,
             reason: formatDecision.reason,
-            contentAnalysis: analyzeContent(params.content),
+            contentAnalysis,
           },
         };
       } catch (error) {

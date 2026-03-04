@@ -46,6 +46,8 @@ export interface AgentServiceConfig {
   // Reliability settings
   maxRequestsPerTurn?: number;
   maxToolFailuresPerTurn?: number;
+  /** Maximum task duration in milliseconds (default: 5 minutes) */
+  maxTaskDurationMs?: number;
 }
 
 interface AgentContext {
@@ -77,6 +79,10 @@ export class AgentService {
   private skillLoader = createSkillLoader();
   private workspaceDir: string;
   private bootstrapFiles: BootstrapFile[] = [];
+
+  // Task timeout tracking
+  private taskStartTime: number = 0;
+  private maxTaskDurationMs: number = 5 * 60 * 1000; // Default: 5 minutes
 
   // Delegated modules
   private sessionTracker: SessionTracker;
@@ -230,6 +236,13 @@ export class AgentService {
 
     // Initialize reliability modules
     const defaults = config.agentDefaults || config.config?.agents?.defaults;
+    
+    // Initialize task timeout based on config or default (5 minutes)
+    const configuredTimeout = config.maxTaskDurationMs ?? defaults?.maxToolIterations 
+      ? Number(defaults.maxToolIterations) * 1000 * 6  // rough estimate: 6s per iteration
+      : 5 * 60 * 1000;
+    this.maxTaskDurationMs = Math.min(Math.max(configuredTimeout, 60000), 3600000); // Clamp to 1-60 minutes
+    
     this.errorTracker = new ToolErrorTracker({
       maxFailuresPerTool: defaults?.maxToolFailuresPerTurn || 3,
       maxTotalFailures: defaults?.maxToolFailuresPerTurn ? defaults.maxToolFailuresPerTurn + 2 : 5,
@@ -1015,6 +1028,7 @@ export class AgentService {
     switch (event.type) {
       case 'agent_start':
         log.debug('Agent turn started');
+        this.taskStartTime = Date.now(); // Record task start time for timeout
         this.progressManager.startTask();
         
         // Record request and check limits

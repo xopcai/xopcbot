@@ -108,7 +108,7 @@ export function createUninstallCommand(): Command {
     .description('Uninstall gateway system service')
     .action(async () => {
       const ctx = getContextWithOpts();
-      const configPath = ctx.configPath || DEFAULT_PATHS.config;
+      const _configPath = ctx.configPath || DEFAULT_PATHS.config;
 
       console.log('🔧 Uninstalling gateway system service...');
 
@@ -160,9 +160,6 @@ export function createServiceStatusCommand(): Command {
   return new Command('service-status')
     .description('Check system service status')
     .action(async () => {
-      const ctx = getContextWithOpts();
-      const configPath = ctx.configPath || DEFAULT_PATHS.config;
-
       console.log('📊 Gateway service status');
       console.log('');
       console.log('To check manually:');

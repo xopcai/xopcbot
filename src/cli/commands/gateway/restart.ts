@@ -5,7 +5,7 @@ import { createLogger } from '../../../utils/logger.js';
 import { getContextWithOpts } from '../../index.js';
 import { forceFreePortAndWait, listPortListeners } from '../../../gateway/ports.js';
 
-const log = createLogger('GatewayRestartCommand');
+const _log = createLogger('GatewayRestartCommand');
 
 /**
  * Create restart subcommand

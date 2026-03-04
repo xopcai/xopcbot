@@ -4,7 +4,7 @@ import { createLogger } from '../../../utils/logger.js';
 import { getContextWithOpts } from '../../index.js';
 import { acquireGatewayLock, GatewayLockError } from '../../../gateway/lock.js';
 
-const log = createLogger('GatewayStatusCommand');
+const _log = createLogger('GatewayStatusCommand');
 
 /**
  * Create status subcommand

@@ -19,7 +19,7 @@ import {
   createServiceStatusCommand,
 } from './gateway/index.js';
 
-const log = createLogger('GatewayCommand');
+const _log = createLogger('GatewayCommand');
 
 function createGatewayCommand(_ctx: CLIContext): Command {
   const cmd = new Command('gateway')

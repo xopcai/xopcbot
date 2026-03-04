@@ -124,12 +124,16 @@ export class XopcbotGatewayChat extends LitElement {
     await initI18n('en');
   }
 
+  private _routeHandled = false;
+
   override firstUpdated(): void {
     // Add scroll listener directly to chat messages element after render
     if (this._chatMessages) {
       this._chatMessages.addEventListener('scroll', this._handleScroll as EventListener);
     }
-    // Note: Route handling is done in updated() to avoid duplicate calls
+    // Handle initial route on first render
+    this._handleRouteChange();
+    this._routeHandled = true;
   }
 
   override updated(changedProperties: Map<string, unknown>): void {
@@ -140,8 +144,8 @@ export class XopcbotGatewayChat extends LitElement {
       this.connect();
     }
     
-    // Reload session when route changes
-    if (changedProperties.has('route') && this.route) {
+    // Reload session when route changes (skip if already handled in firstUpdated)
+    if (changedProperties.has('route') && this.route && this._routeHandled) {
       this._handleRouteChange();
     }
   }

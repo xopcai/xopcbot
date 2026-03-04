@@ -12,7 +12,7 @@ import type { MessageBus, InboundMessage } from '../bus/index.js';
 import type { Config, AgentDefaults } from '../config/schema.js';
 import type { ChannelManager } from '../channels/manager.js';
 
-import { resolveModel, DEFAULT_MODEL, getApiKey as getProviderApiKey, getAllProviders, isProviderConfigured, getModelsByProvider, getProviderDisplayName } from '../providers/index.js';
+import { resolveModel, getDefaultModel, getApiKey as getProviderApiKey, getAllProviders, isProviderConfigured, getModelsByProvider, getProviderDisplayName } from '../providers/index.js';
 import { SessionStore, type CompactionConfig, type WindowConfig } from '../session/index.js';
 import { createSkillLoader, type Skill } from './skills/index.js';
 import { getBundledSkillsDir } from '../config/paths.js';
@@ -182,11 +182,13 @@ export class AgentService {
       try {
         model = resolveModel(config.model);
       } catch {
-        log.warn({ model: config.model }, 'Model not found, using default');
-        model = resolveModel(DEFAULT_MODEL);
+        const defaultModel = getDefaultModel(config.config);
+        log.warn({ model: config.model, defaultModel }, 'Model not found, using default');
+        model = resolveModel(defaultModel);
       }
     } else {
-      model = resolveModel(DEFAULT_MODEL);
+      const defaultModel = getDefaultModel(config.config);
+      model = resolveModel(defaultModel);
     }
 
     this.agent = new Agent({

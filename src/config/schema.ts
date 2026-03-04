@@ -21,7 +21,7 @@ export const AgentDefaultsSchema = z.object({
       primary: z.string().optional(),
       fallbacks: z.array(z.string()).optional(),
     }).strict(),
-  ]).default('anthropic/claude-sonnet-4-5'),
+  ]).default(''), // Empty default - will be resolved dynamically at runtime
   maxTokens: z.number().default(8192),
   temperature: z.number().default(0.7),
   maxToolIterations: z.number().default(20),
@@ -52,7 +52,7 @@ export const AgentsConfigSchema = z.object({
 }).default({
   defaults: {
     workspace: '~/.xopcbot/workspace',
-    model: 'anthropic/claude-sonnet-4-5',
+    model: '', // Empty default - will be resolved dynamically at runtime
     maxTokens: 8192,
     temperature: 0.7,
     maxToolIterations: 20,
@@ -296,7 +296,7 @@ export const ConfigSchema = z.object({
   agents: {
     defaults: {
       workspace: '~/.xopcbot/workspace',
-      model: 'anthropic/claude-sonnet-4-5',
+      model: '', // Empty default - will be resolved dynamically at runtime
       maxTokens: 8192,
       temperature: 0.7,
       maxToolIterations: 20,

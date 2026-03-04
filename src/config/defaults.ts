@@ -1,27 +1,10 @@
 import type { ModelDefinitionConfig, ModelProviderConfig } from './types.models.js';
 
 // ============================================
-// Default Model Aliases
+// Default Model Aliases (Removed)
 // ============================================
-
-export const DEFAULT_MODEL_ALIASES: Readonly<Record<string, string>> = {
-  // Anthropic (pi-ai catalog uses "latest" ids without date suffix)
-  opus: "anthropic/claude-opus-4-6",
-  sonnet: "anthropic/claude-sonnet-4-6",
-
-  // OpenAI
-  gpt: "openai/gpt-5.2",
-  "gpt-mini": "openai/gpt-5-mini",
-
-  // Google Gemini (3.x are preview ids in the catalog)
-  gemini: "google/gemini-3-pro-preview",
-  "gemini-flash": "google/gemini-3-flash-preview",
-
-  // Common aliases for xopcbot
-  "claude-opus": "anthropic/claude-opus-4-6",
-  "claude-sonnet": "anthropic/claude-sonnet-4-6",
-  "claude-haiku": "anthropic/claude-haiku-4",
-};
+// Model aliases have been removed. Users must use full provider/model format
+// (e.g., "anthropic/claude-sonnet-4-5").
 
 // ============================================
 // Default Values
@@ -196,8 +179,10 @@ export function applyModelDefaults(
 }
 
 // ============================================
-// Resolve Model Alias
+// Resolve Model Alias (Removed)
 // ============================================
+// Model aliases have been removed. This function is kept as a no-op
+// for any code that may still call it, but it just returns the input.
 
 export function resolveModelAlias(alias: string): string | null {
   if (!alias || typeof alias !== 'string') {
@@ -207,6 +192,5 @@ export function resolveModelAlias(alias: string): string | null {
   if (!trimmed) {
     return null;
   }
-  const aliasKey = trimmed.toLowerCase();
-  return DEFAULT_MODEL_ALIASES[aliasKey] ?? trimmed;
+  return trimmed;
 }

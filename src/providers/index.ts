@@ -279,16 +279,10 @@ export function providerSupportsApiKey(provider: string): boolean {
   return PROVIDER_META[provider]?.supportsApiKey ?? true;
 }
 
-export const DEFAULT_MODEL = 'anthropic/claude-sonnet-4-5';
-
-export const RECOMMENDED_MODELS = [
-  'anthropic/claude-sonnet-4-5',
-  'openai/gpt-4o',
-  'google/gemini-2.5-flash',
-  'groq/llama-3.3-70b',
-  'deepseek/deepseek-chat',
-] as const;
-
+/**
+ * Provider prefix patterns for model ID auto-detection.
+ * Used by detectProvider() to guess the provider from a model ID.
+ */
 export const PROVIDER_PREFIX_PATTERNS: Record<string, string[]> = {
   openai: ['gpt-', 'o1', 'o3', 'o4', 'chatgpt-'],
   anthropic: ['claude-'],
@@ -334,6 +328,40 @@ export function detectProvider(modelId: string): string | undefined {
 
 export function getProviderEnvVars(provider: string): string[] {
   return PROVIDER_ENV_MAP[provider] || [`${provider.toUpperCase().replace(/-/g, '_')}_API_KEY`];
+}
+
+// ============================================
+// Dynamic Default Model Resolution
+// ============================================
+
+/**
+ * Get a default model reference.
+ * Priority:
+ * 1. First available model with configured API key
+ * 2. First model from pi-ai catalog
+ * 3. Fallback to anthropic/claude-sonnet-4-5 as last resort
+ */
+export function getDefaultModel(config?: Config | null | undefined): string {
+  // Try to get first available model with API key
+  const available = getFirstAvailableModel(config);
+  if (available) {
+    return `${available.provider}/${available.id}`;
+  }
+  
+  // Try to get first model from pi-ai catalog
+  for (const provider of getPiAiProviders()) {
+    try {
+      const models = getPiAiModels(provider);
+      if (models.length > 0) {
+        return `${provider}/${models[0].id}`;
+      }
+    } catch {
+      continue;
+    }
+  }
+  
+  // Last resort fallback
+  return 'anthropic/claude-sonnet-4-5';
 }
 
 // Re-export ModelRegistry for advanced use cases

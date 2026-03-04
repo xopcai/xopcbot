@@ -157,13 +157,31 @@ export class XopcbotGatewayChat extends LitElement {
     const route = this.route;
     if (!route) return;
 
+    // Prevent processing route if URL explicitly specifies a session
+    // This acts as a route guard to prevent auto-loading wrong session
+    const currentHash = location.hash.slice(1);
+    if (route.type === 'recent' && currentHash.startsWith('chat/')) {
+      // URL has explicit session but route says 'recent' - parse from URL
+      const pathMatch = currentHash.match(/^chat\/(.+)$/);
+      if (pathMatch && pathMatch[1] && pathMatch[1] !== 'new') {
+        console.warn('[GatewayChat] Route mismatch: URL has session but route is recent, loading from URL');
+        const sessionKey = decodeURIComponent(pathMatch[1]);
+        this._lastLoadedSessionKey = null;
+        await this._loadSession(sessionKey, 0);
+        this._lastLoadedSessionKey = sessionKey;
+        return;
+      }
+    }
+
     // Get target session key from route
     let targetSessionKey: string | null = null;
 
     switch (route.type) {
       case 'recent':
-        // Load recent sessions with autoLoad=true to load the most recent one
-        await this._loadSessions(true);
+        // Only auto-load if URL doesn't specify a session
+        if (!currentHash.startsWith('chat/') || currentHash === 'chat' || currentHash === 'chat/') {
+          await this._loadSessions(true);
+        }
         return;
       case 'session':
         targetSessionKey = route.sessionKey;
@@ -448,8 +466,16 @@ export class XopcbotGatewayChat extends LitElement {
         await this._loadSession(recentKey, 0);
         this._lastLoadedSessionKey = recentKey;
 
-        // Update URL to reflect current session
-        this._updateUrlWithSession(recentKey);
+        // Only update URL if it doesn't already specify a different session
+        const currentHash = location.hash.slice(1);
+        const isExplicitSession = currentHash.startsWith('chat/') && 
+                                  currentHash !== 'chat' && 
+                                  currentHash !== 'chat/';
+        if (!isExplicitSession) {
+          this._updateUrlWithSession(recentKey);
+        } else {
+          console.log('[GatewayChat] Skipping URL update - user has explicit session in URL');
+        }
       } else if (gatewaySessions.length > 0) {
         // No sessions with messages, use the most recent empty session
         const emptySession = gatewaySessions[0];

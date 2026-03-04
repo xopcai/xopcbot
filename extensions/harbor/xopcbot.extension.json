@@ -1,0 +1,47 @@
+{
+  "id": "harbor",
+  "name": "Harbor Benchmark Integration",
+  "description": "Run Harbor benchmark evaluations (Terminal-Bench, SWE-Bench) directly from xopcbot",
+  "version": "0.1.0",
+  "kind": "utility",
+  "main": "src/index.ts",
+  "author": "xopcbot Team",
+  "license": "MIT",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "pythonPath": {
+        "type": "string",
+        "description": "Python interpreter path",
+        "default": "python3"
+      },
+      "maxConcurrentRuns": {
+        "type": "number",
+        "description": "Maximum concurrent Harbor runs",
+        "default": 5
+      },
+      "defaultProvider": {
+        "type": "string",
+        "description": "Default environment provider (docker|daytona|modal)",
+        "default": "docker",
+        "enum": ["docker", "daytona", "modal"]
+      },
+      "cacheTtlMs": {
+        "type": "number",
+        "description": "Default cache TTL in milliseconds",
+        "default": 60000
+      },
+      "maxEvaluations": {
+        "type": "number",
+        "description": "Maximum evaluations to keep in memory",
+        "default": 50
+      },
+      "requestTimeoutMs": {
+        "type": "number",
+        "description": "Request timeout in milliseconds",
+        "default": 300000
+      }
+    },
+    "required": []
+  }
+}

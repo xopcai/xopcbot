@@ -60,6 +60,12 @@ const log = createLogger('TelegramExtension');
 /** Maximum voice message duration in seconds for STT */
 const STT_MAX_VOICE_DURATION_SECONDS = 60;
 
+/** Maximum retry attempts for TTS generation */
+const TTS_MAX_RETRIES = 3;
+
+/** Delay between TTS retry attempts in milliseconds */
+const TTS_RETRY_DELAY_MS = 500;
+
 /** Maximum message chunk size (leaving margin for Telegram's 4096 limit) */
 const MESSAGE_CHUNK_SIZE = 3800;
 

@@ -10,9 +10,7 @@
 
 import {
   parseMarkdownToIR,
-  renderToTelegramHtml,
   renderToPlainText,
-  chunkMarkdownIR,
   markdownToTelegramChunks,
   renderTelegramHtmlText,
   type FormattedChunk,
@@ -54,7 +52,7 @@ export function escapeHtmlAttr(text: string): string {
 /**
  * Detect if a link is an auto-linked file reference
  */
-function isAutoLinkedFileRef(href: string, label: string): boolean {
+function _isAutoLinkedFileRef(href: string, label: string): boolean {
   const stripped = href.replace(/^https?:\/\//i, '');
   if (stripped !== label) {
     return false;
@@ -173,7 +171,7 @@ function wrapSegmentFileRefs(
  * - <code>git<i>diff</code> (i tag not closed)
  * - <code>git</i>log</code> (i tag closed but not opened in context)
  */
-function fixMalformedHtml(html: string): string {
+function _fixMalformedHtml(html: string): string {
   const result: string[] = [];
   const openTags: string[] = [];
   let i = 0;

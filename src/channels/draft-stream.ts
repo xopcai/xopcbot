@@ -105,10 +105,11 @@ export function createTelegramDraftStream(
 
     lastSentText = trimmed;
 
-    // Convert markdown to HTML when using HTML parse mode
+    // When using HTML parse mode, assume text is already HTML
+    // Only process markdown when parseMode is not HTML or is undefined
     const messageText = options.parseMode === 'HTML' 
-      ? formatTelegramMessage(trimmed).html 
-      : trimmed;
+      ? trimmed 
+      : formatTelegramMessage(trimmed).html;
 
     try {
       if (typeof streamMessageId === 'number') {

@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 // Mock the logger module before importing the manager
 vi.mock('../../../utils/logger.js', () => ({
-  getLogger: () => ({
+  createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),

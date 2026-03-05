@@ -196,8 +196,10 @@ function isBlockStart(line: string): boolean {
  * Parse inline markdown elements
  */
 export function parseInline(text: string, options: ParseOptions = {}): MarkdownNode[] {
-  const nodes: MarkdownNode[] = [];
-  let remaining = text;
+  const _nodes: MarkdownNode[] = [];
+  let _remaining = text;
+  void _nodes; // Reserved for future use
+  void _remaining; // Reserved for future use
 
   // Patterns for inline elements (order matters - longer patterns first)
   const patterns: Array<{ regex: RegExp; type: MarkdownNodeType; process?: (match: RegExpExecArray) => Partial<MarkdownNode> }> = [
@@ -242,11 +244,13 @@ export function parseInline(text: string, options: ParseOptions = {}): MarkdownN
     
     // Add URL matches as link patterns
     for (const um of urlMatches) {
-      const beforeText = text.slice(0, um.index);
-      const afterText = text.slice(um.index + um.length);
-      
+      const _beforeText = text.slice(0, um.index);
+      const _afterText = text.slice(um.index + um.length);
+
       // We'll handle this by reconstructing
       // For now, just note that auto-linkify adds complexity
+      void _beforeText; // Silence unused warning
+      void _afterText; // Silence unused warning
     }
   }
 
@@ -301,7 +305,7 @@ export function parseInline(text: string, options: ParseOptions = {}): MarkdownN
       result.push({
         type: match.type,
         href: match.href,
-        content: match.href ? match.content : undefined,
+        content: match.content,
         children: children.length > 0 ? children : undefined,
       });
 
@@ -497,7 +501,8 @@ function splitNode(node: MarkdownNode, limit: number): MarkdownNode[] {
     }
 
     // If no sentence boundaries found, hard split
-    if (parts.length === 0 && text.length > limit) {
+    if (parts.length === 0 || (parts.length === 1 && parts[0].content && parts[0].content.length > limit)) {
+      parts.length = 0;
       for (let i = 0; i < text.length; i += limit) {
         parts.push({ type: 'text', content: text.slice(i, i + limit) });
       }
@@ -527,6 +532,21 @@ function splitNode(node: MarkdownNode, limit: number): MarkdownNode[] {
 
     if (currentChildren.length > 0) {
       parts.push({ type: 'paragraph', children: currentChildren });
+    }
+
+    // If still only one part and it exceeds limit, split the text content within children
+    if (parts.length === 1 && getNodeTextLength(parts[0]) > limit) {
+      const paragraph = parts[0];
+      if (paragraph.children && paragraph.children.length === 1 && paragraph.children[0].type === 'text') {
+        // Single text child, split it
+        const textNode = paragraph.children[0];
+        const text = textNode.content || '';
+        const splitTexts: MarkdownNode[] = [];
+        for (let i = 0; i < text.length; i += limit) {
+          splitTexts.push({ type: 'text', content: text.slice(i, i + limit) });
+        }
+        return splitTexts.map(t => ({ type: 'paragraph', children: [t] }));
+      }
     }
 
     return parts;

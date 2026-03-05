@@ -1,12 +1,25 @@
+// Mock os.homedir for consistent paths across environments
+vi.mock("os", () => ({
+  homedir: () => "/root",
+}));
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// Set consistent HOME for tests
+process.env.HOME = '/root';
+
 import { createRestartCommand } from '../restart.js';
 import { loadConfig } from '../../../../config/index.js';
 import { listPortListeners, forceFreePortAndWait } from '../../../../gateway/ports.js';
 
 // Mock child_process
-vi.mock('child_process', () => ({
-  spawn: vi.fn(),
-}));
+vi.mock('child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('child_process')>();
+  return {
+    ...actual,
+    spawn: vi.fn(),
+  };
+});
 
 // Mock dependencies
 vi.mock('../../../../config/index.js', () => ({

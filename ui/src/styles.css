@@ -4231,7 +4231,6 @@ xopcbot-gateway-chat {
 .markdown-body h1 { font-size: 1.5em; border-bottom: 1px solid var(--border-color); padding-bottom: 0.3em; }
 .markdown-body h2 { font-size: 1.3em; border-bottom: 1px solid var(--border-color); padding-bottom: 0.3em; }
 .markdown-body h3 { font-size: 1.1em; }
-.markdown-body p { margin-bottom: 1em; }
 
 .markdown-body ul,
 .markdown-body ol {

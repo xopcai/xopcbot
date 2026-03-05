@@ -4,8 +4,22 @@
  * Converts Markdown to Telegram HTML format with proper escaping
  * and file reference protection
  * 
- *
+ * Now uses Markdown IR (Intermediate Representation) for robust parsing
+ * Inspired by OpenClaw's approach
  */
+
+import {
+  parseMarkdownToIR,
+  renderToTelegramHtml,
+  renderToPlainText,
+  chunkMarkdownIR,
+  markdownToTelegramChunks,
+  renderTelegramHtmlText,
+  type FormattedChunk,
+} from './markdown-ir.js';
+
+// Re-export from markdown-ir for convenience
+export { markdownToTelegramChunks, renderTelegramHtmlText, type FormattedChunk };
 
 // File extensions that share TLDs and commonly appear in code/documentation
 const FILE_EXTENSIONS_WITH_TLD = new Set([
@@ -55,44 +69,11 @@ function isAutoLinkedFileRef(href: string, label: string): boolean {
 
 /**
  * Simple Markdown to HTML converter for Telegram
+ * @deprecated Use renderTelegramHtmlText() or markdownToTelegramChunks() instead
  */
 export function markdownToTelegramHtml(markdown: string): string {
-  let html = escapeHtml(markdown);
-
-  // Code blocks (must be before inline code)
-  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_match, lang, code) => {
-    return `<pre><code class="language-${lang}">${code.trim()}</code></pre>`;
-  });
-
-  // Inline code
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-
-  // Bold
-  html = html.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
-
-  // Italic
-  html = html.replace(/\*([^*]+)\*/g, '<i>$1</i>');
-  html = html.replace(/_([^_]+)_/g, '<i>$1</i>');
-
-  // Strikethrough
-  html = html.replace(/~~([^~]+)~~/g, '<s>$1</s>');
-
-  // Links
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, href) => {
-    if (isAutoLinkedFileRef(href, text)) {
-      return `<code>${escapeHtml(text)}</code>`;
-    }
-    const safeHref = escapeHtmlAttr(href);
-    return `<a href="${safeHref}">${text}</a>`;
-  });
-
-  // Blockquotes
-  html = html.replace(/^&gt; (.*$)/gm, '<blockquote>$1</blockquote>');
-
-  // Spoilers (Telegram-specific)
-  html = html.replace(/~~\|([^|]+)\|~~/g, '<tg-spoiler>$1</tg-spoiler>');
-
-  return html;
+  // Delegate to new IR-based implementation
+  return renderTelegramHtmlText(markdown);
 }
 
 /**
@@ -100,41 +81,11 @@ export function markdownToTelegramHtml(markdown: string): string {
  * Used for fallback when HTML parsing fails
  */
 export function markdownToPlainText(markdown: string): string {
-  let text = markdown;
-
-  // Code blocks - keep content, remove markers
-  text = text.replace(/```(\w*)\n([\s\S]*?)```/g, '$2');
-
-  // Inline code - keep content, remove backticks
-  text = text.replace(/`([^`]+)`/g, '$1');
-
-  // Bold - keep content, remove asterisks
-  text = text.replace(/\*\*([^*]+)\*\*/g, '$1');
-
-  // Italic - keep content, remove asterisks/underscores
-  text = text.replace(/\*([^*]+)\*/g, '$1');
-  text = text.replace(/_([^_]+)_/g, '$1');
-
-  // Strikethrough - keep content, remove tildes
-  text = text.replace(/~~([^~]+)~~/g, '$1');
-
-  // Links - convert to "text (url)" format
-  text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)');
-
-  // Blockquotes - remove marker, keep content
-  text = text.replace(/^&gt; (.*$)/gm, '$1');
-  text = text.replace(/^> (.*$)/gm, '$1');
-
-  // List markers - remove markers, keep content
-  text = text.replace(/^\* (.*$)/gm, '$1');
-  text = text.replace(/^- (.*$)/gm, '$1');
-  text = text.replace(/^\d+\. (.*$)/gm, '$1');
-
-  // Headers - remove markers, keep content
-  text = text.replace(/^#{1,6} (.*$)/gm, '$1');
-
-  return text.trim();
+  const ir = parseMarkdownToIR(markdown, { linkify: true, enableSpoilers: true });
+  return renderToPlainText(ir);
 }
+
+// ... rest of the file with wrapFileReferencesInHtml, fixMalformedHtml, etc.
 
 /**
  * Wrap standalone file references in &lt;code&gt; tags
@@ -383,60 +334,45 @@ export function isValidTelegramHtml(html: string): boolean {
 
 /**
  * Format message for Telegram with proper HTML and file reference protection
+ * Now uses Markdown IR for robust parsing
  */
 export function formatTelegramMessage(
   markdown: string,
-  options: { wrapFileRefs?: boolean } = {}
+  options: { wrapFileRefs?: boolean; textMode?: 'markdown' | 'html' } = {}
 ): { html: string; text: string } {
-  let html = markdownToTelegramHtml(markdown);
-  html = options.wrapFileRefs !== false
+  const html = renderTelegramHtmlText(markdown, { textMode: options.textMode });
+  
+  // Wrap file references if enabled
+  const finalHtml = options.wrapFileRefs !== false
     ? wrapFileReferencesInHtml(html)
     : html;
 
-  // Fix any malformed HTML tags
-  html = fixMalformedHtml(html);
-
   return {
-    html,
+    html: finalHtml,
     text: markdown,
   };
 }
 
 /**
  * Split long message into chunks respecting code blocks and paragraphs
+ * @deprecated Use markdownToTelegramChunks() instead for IR-based chunking
  */
 export function splitTelegramMessage(
   text: string,
   maxChars: number = 4000
 ): string[] {
-  if (text.length <= maxChars) {
-    return [text];
-  }
+  // Delegate to new IR-based chunking
+  const chunks = markdownToTelegramChunks(text, maxChars);
+  return chunks.map(c => c.html);
+}
 
-  const chunks: string[] = [];
-  let remaining = text;
-
-  while (remaining.length > maxChars) {
-    // Try to split at paragraph boundary
-    let splitIndex = remaining.lastIndexOf('\n\n', maxChars);
-
-    // If no paragraph boundary, try newline
-    if (splitIndex === -1 || splitIndex < maxChars * 0.5) {
-      splitIndex = remaining.lastIndexOf('\n', maxChars);
-    }
-
-    // If still no good split point, hard split
-    if (splitIndex === -1 || splitIndex < maxChars * 0.5) {
-      splitIndex = maxChars;
-    }
-
-    chunks.push(remaining.slice(0, splitIndex));
-    remaining = remaining.slice(splitIndex).trimStart();
-  }
-
-  if (remaining) {
-    chunks.push(remaining);
-  }
-
-  return chunks;
+/**
+ * Smart split message into chunks with both HTML and plain text
+ * Uses Markdown IR for robust chunking that preserves structure
+ */
+export function splitTelegramMessageSmart(
+  markdown: string,
+  maxChars: number = 4000
+): FormattedChunk[] {
+  return markdownToTelegramChunks(markdown, maxChars);
 }

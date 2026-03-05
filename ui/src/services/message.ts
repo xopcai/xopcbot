@@ -1,9 +1,8 @@
 // MessageService - Manages message sending and streaming
-// Extracted from gateway-chat.ts
 
 import { getStore } from '../core/store.js';
 import { apiUrl, authHeaders } from '../utils/api.js';
-import type { Message, MessageContent } from '../core/store.js';
+import type { Message } from '../core/store.js';
 
 const store = getStore();
 
@@ -43,25 +42,16 @@ export class MessageService {
     this._token = token;
   }
 
-  /**
-   * Check if currently sending/streaming
-   */
   get isStreaming(): boolean {
-    return store.getState().streaming.isActive;
+    return store.getState().message.streaming.isActive;
   }
 
-  /**
-   * Abort current request
-   */
   abort(): void {
     this._abortController?.abort();
     this._abortController = undefined;
-    store.getState().setStreaming(false);
+    store.getState().setStreamingActive(false);
   }
 
-  /**
-   * Send a message and handle streaming response
-   */
   async sendMessage(options: SendMessageOptions): Promise<void> {
     if (this.isStreaming) {
       throw new Error('Already sending a message');
@@ -73,7 +63,6 @@ export class MessageService {
       throw new Error('Message cannot be empty');
     }
 
-    // Add user message to store
     const userMessage: Message = {
       id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       role: 'user',
@@ -83,8 +72,7 @@ export class MessageService {
     };
     store.getState().addMessage(userMessage);
 
-    // Start streaming
-    store.getState().setStreaming(true);
+    store.getState().setStreamingActive(true);
     store.getState().setStreamingContent('');
 
     this._abortController = new AbortController();
@@ -118,7 +106,6 @@ export class MessageService {
       if (contentType.includes('text/event-stream') && res.body) {
         await this._handleSSEStream(res.body);
       } else {
-        // JSON fallback
         const json: AgentResponse = await res.json();
         if (json.ok && json.payload?.content) {
           store.getState().setStreamingContent(json.payload.content);
@@ -132,17 +119,14 @@ export class MessageService {
       }
 
       const errorMessage = error instanceof Error ? error.message : 'Failed to send message';
-      store.getState().setError(errorMessage);
-      store.getState().setStreaming(false);
+      store.getState().setMessageError(errorMessage);
+      store.getState().setStreamingActive(false);
       throw error;
     } finally {
       this._abortController = undefined;
     }
   }
 
-  /**
-   * Handle SSE stream from response
-   */
   private async _handleSSEStream(body: ReadableStream<Uint8Array>): Promise<void> {
     const reader = body.pipeThrough(new TextDecoderStream()).getReader();
     let buffer = '';
@@ -156,7 +140,6 @@ export class MessageService {
 
         buffer += value;
 
-        // Process complete lines
         while (buffer.includes('\n')) {
           const newlineIndex = buffer.indexOf('\n');
           const line = buffer.slice(0, newlineIndex);
@@ -167,7 +150,6 @@ export class MessageService {
           } else if (line.startsWith('data:')) {
             currentEventData += (currentEventData ? '\n' : '') + line.slice(5).trim();
           } else if (line === '') {
-            // Empty line = event boundary
             if (currentEventData) {
               this._handleSSEEvent(currentEventType || 'message', currentEventData);
               currentEventType = '';
@@ -177,7 +159,6 @@ export class MessageService {
         }
       }
 
-      // Process remaining buffer
       if (buffer.trim() || currentEventData) {
         if (buffer.trim()) {
           const lines = buffer.split('\n');
@@ -197,21 +178,21 @@ export class MessageService {
           this._handleSSEEvent(currentEventType || 'message', currentEventData);
         }
       }
+    } catch (err) {
+      console.error('[MessageService] SSE stream error:', err);
+      store.getState().setMessageError('Stream processing error');
     } finally {
       reader.releaseLock();
     }
   }
 
-  /**
-   * Handle individual SSE event
-   */
   private _handleSSEEvent(event: string, data: string): void {
     try {
       const parsed = JSON.parse(data);
 
       switch (event) {
         case 'status':
-          store.getState().setStreaming(true);
+          store.getState().setStreamingActive(true);
           break;
 
         case 'token':
@@ -222,8 +203,8 @@ export class MessageService {
 
         case 'error':
           const errorMsg = parsed.content || parsed.error?.message || 'Message failed';
-          store.getState().setError(errorMsg);
-          store.getState().setStreaming(false);
+          store.getState().setMessageError(errorMsg);
+          store.getState().setStreamingActive(false);
           break;
 
         case 'result':
@@ -231,7 +212,6 @@ export class MessageService {
           break;
 
         default:
-          // Unknown event type - treat as token if it has content
           if (parsed.content) {
             store.getState().appendStreamingContent(parsed.content);
           }
@@ -242,15 +222,11 @@ export class MessageService {
     }
   }
 
-  /**
-   * Clear all messages
-   */
   clearMessages(): void {
     store.getState().clearMessages();
   }
 }
 
-// Singleton instance
 let messageServiceInstance: MessageService | null = null;
 
 export function getMessageService(token?: string): MessageService {

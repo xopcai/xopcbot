@@ -29,6 +29,8 @@ export class Router {
   private _currentRoute: RouteLocation | null = null;
   private _listeners: Set<RouteChangeListener> = new Set();
   private _beforeEachGuards: Array<(to: RouteLocation, from: RouteLocation | null) => boolean | Promise<boolean>> = [];
+  private _isNavigating = false;
+  private _pendingNavigation: string | null = null;
 
   constructor(options: RouterOptions) {
     this._routes = options.routes;
@@ -39,19 +41,50 @@ export class Router {
   private _init(): void {
     // Listen to hash changes
     window.addEventListener('hashchange', () => {
-      this._handleRouteChange();
+      this._handleHashChange();
     });
 
     // Initial route
-    this._handleRouteChange();
+    this._handleHashChange();
   }
 
-  private _handleRouteChange(): void {
+  private _handleHashChange(): void {
     const hash = location.hash.slice(1) || '/';
+    // Don't trigger navigation if we're already navigating to this path
+    if (this._currentRoute?.fullPath === hash) {
+      return;
+    }
     this.navigate(hash);
   }
 
   async navigate(path: string): Promise<boolean> {
+    // Prevent concurrent navigation
+    if (this._isNavigating) {
+      this._pendingNavigation = path;
+      console.log('[Router] Navigation queued:', path);
+      return false;
+    }
+
+    this._isNavigating = true;
+
+    try {
+      const result = await this._doNavigate(path);
+      
+      // Process pending navigation if any
+      if (this._pendingNavigation && this._pendingNavigation !== path) {
+        const nextPath = this._pendingNavigation;
+        this._pendingNavigation = null;
+        return this.navigate(nextPath);
+      }
+      
+      return result;
+    } finally {
+      this._isNavigating = false;
+      this._pendingNavigation = null;
+    }
+  }
+
+  private async _doNavigate(path: string): Promise<boolean> {
     const from = this._currentRoute;
     const to = this._resolveRoute(path);
 
@@ -60,11 +93,21 @@ export class Router {
       return false;
     }
 
+    // Skip if navigating to same route
+    if (from?.fullPath === to.fullPath) {
+      return true;
+    }
+
     // Run beforeEach guards
     for (const guard of this._beforeEachGuards) {
-      const result = await guard(to, from);
-      if (result === false) {
-        console.log('[Router] Navigation cancelled by guard');
+      try {
+        const result = await guard(to, from);
+        if (result === false) {
+          console.log('[Router] Navigation cancelled by beforeEach guard');
+          return false;
+        }
+      } catch (err) {
+        console.error('[Router] Guard error:', err);
         return false;
       }
     }
@@ -72,9 +115,14 @@ export class Router {
     // Run route-specific beforeEnter
     const matchedRoute = this._matchRoute(path);
     if (matchedRoute?.beforeEnter) {
-      const result = await matchedRoute.beforeEnter(to, from);
-      if (result === false) {
-        console.log('[Router] Navigation cancelled by route guard');
+      try {
+        const result = await matchedRoute.beforeEnter(to, from);
+        if (result === false) {
+          console.log('[Router] Navigation cancelled by route guard');
+          return false;
+        }
+      } catch (err) {
+        console.error('[Router] Route guard error:', err);
         return false;
       }
     }
@@ -82,7 +130,13 @@ export class Router {
     this._currentRoute = to;
 
     // Notify listeners
-    this._listeners.forEach(listener => listener(to, from));
+    this._listeners.forEach(listener => {
+      try {
+        listener(to, from);
+      } catch (err) {
+        console.error('[Router] Listener error:', err);
+      }
+    });
 
     return true;
   }
@@ -167,8 +221,14 @@ export class Router {
     return hashIndex !== -1 ? path.slice(hashIndex + 1) : '';
   }
 
-  beforeEach(guard: (to: RouteLocation, from: RouteLocation | null) => boolean | Promise<boolean>): void {
+  beforeEach(guard: (to: RouteLocation, from: RouteLocation | null) => boolean | Promise<boolean>): () => void {
     this._beforeEachGuards.push(guard);
+    return () => {
+      const index = this._beforeEachGuards.indexOf(guard);
+      if (index > -1) {
+        this._beforeEachGuards.splice(index, 1);
+      }
+    };
   }
 
   onRouteChange(listener: RouteChangeListener): () => void {
@@ -180,13 +240,45 @@ export class Router {
     return this._currentRoute;
   }
 
-  push(path: string): void {
-    location.hash = path;
+  get isNavigating(): boolean {
+    return this._isNavigating;
   }
 
+  /**
+   * Push a new route (adds to history)
+   */
+  push(path: string): void {
+    if (this._currentRoute?.fullPath === path) {
+      return; // Skip if same path
+    }
+    location.hash = path;
+    // hashchange event will trigger navigate
+  }
+
+  /**
+   * Replace current route (doesn't add to history)
+   */
   replace(path: string): void {
+    if (this._currentRoute?.fullPath === path) {
+      return; // Skip if same path
+    }
     history.replaceState(null, '', `#${path}`);
-    this._handleRouteChange();
+    // Manually trigger navigation since replaceState doesn't fire hashchange
+    this.navigate(path);
+  }
+
+  /**
+   * Go back in history
+   */
+  back(): void {
+    history.back();
+  }
+
+  /**
+   * Go forward in history
+   */
+  forward(): void {
+    history.forward();
   }
 }
 
@@ -206,7 +298,7 @@ export function useRouter(): Router {
 }
 
 // Decorator for route-aware components
-export function routeAware(target: any) {
+export function routeAware<T extends { new (...args: any[]): any }>(target: T): T {
   return class extends target {
     private _unsubscribe?: () => void;
 
@@ -216,12 +308,13 @@ export function routeAware(target: any) {
       try {
         const router = useRouter();
         this._unsubscribe = router.onRouteChange((to, from) => {
-          if (this.onRouteChange) {
-            this.onRouteChange(to, from);
+          if ((this as any).onRouteChange) {
+            (this as any).onRouteChange(to, from);
           }
         });
       } catch (e) {
         // Router not initialized yet
+        console.warn('[routeAware] Router not initialized');
       }
     }
 
@@ -229,7 +322,7 @@ export function routeAware(target: any) {
       super.disconnectedCallback?.();
       this._unsubscribe?.();
     }
-  };
+  } as T;
 }
 
 export interface RouteAware {

@@ -3,6 +3,7 @@ import { customElement, property, state, query } from 'lit/decorators.js';
 import './components/MessageEditor';
 import './components/MessageList';
 import './components/StreamingMessageContainer';
+import './components/MarkdownRenderer';
 import { t, initI18n } from './utils/i18n';
 import type { Attachment } from './utils/attachment-utils';
 import type { MessageEditor } from './components/MessageEditor';
@@ -1028,7 +1029,8 @@ export class XopcbotGatewayChat extends LitElement {
             <div class="markdown-content">
               ${content.map((block) => {
                 if (block.type === 'text' && block.text) {
-                  return html`<p class="whitespace-pre-wrap">${block.text}<span class="streaming-cursor"></span></p>`;
+                  // Streaming messages use markdown-renderer for consistency
+                  return html`<markdown-renderer .content=${block.text}></markdown-renderer><span class="streaming-cursor"></span>`;
                 }
                 return '';
               })}
@@ -1072,7 +1074,7 @@ export class XopcbotGatewayChat extends LitElement {
       <div class="markdown-content">
         ${content.map((block) => {
           if (block.type === 'text' && block.text) {
-            return html`<p class="whitespace-pre-wrap">${block.text}</p>`;
+            return html`<markdown-renderer .content=${block.text}></markdown-renderer>`;
           }
           return '';
         })}

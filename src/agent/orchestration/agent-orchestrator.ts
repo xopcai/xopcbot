@@ -1,0 +1,125 @@
+/**
+ * Agent Orchestrator - Coordinates Agent execution flow
+ *
+ * Manages the complete agent execution pipeline from message processing
+ * to response generation.
+ */
+
+import { Agent, type AgentMessage } from '@mariozechner/pi-agent-core';
+import type { InboundMessage } from '../../bus/index.js';
+import type { SessionStore } from '../../session/index.js';
+import type { ModelManager } from '../models/index.js';
+import type { SessionContext } from '../session/session-context.js';
+import type { AgentEventHandler } from './agent-event-handler.js';
+import type { FeedbackCoordinator } from '../feedback/feedback-coordinator.js';
+import { createLogger } from '../../utils/logger.js';
+
+const log = createLogger('AgentOrchestrator');
+
+export interface AgentOrchestratorConfig {
+  agent: Agent;
+  sessionStore: SessionStore;
+  modelManager: ModelManager;
+  eventHandler: AgentEventHandler;
+  feedbackCoordinator: FeedbackCoordinator;
+}
+
+export class AgentOrchestrator {
+  private agent: Agent;
+  private sessionStore: SessionStore;
+  private modelManager: ModelManager;
+  private eventHandler: AgentEventHandler;
+  private feedbackCoordinator: FeedbackCoordinator;
+
+  constructor(config: AgentOrchestratorConfig) {
+    this.agent = config.agent;
+    this.sessionStore = config.sessionStore;
+    this.modelManager = config.modelManager;
+    this.eventHandler = config.eventHandler;
+    this.feedbackCoordinator = config.feedbackCoordinator;
+  }
+
+  /**
+   * Process a message through the agent orchestration pipeline
+   */
+  async process(msg: InboundMessage, context: SessionContext): Promise<void> {
+    const { sessionKey } = context;
+    
+    log.debug({ sessionKey }, 'Processing message through agent orchestrator');
+    
+    try {
+      // 1. Load session history
+      const messages = await this.sessionStore.load(sessionKey);
+      this.agent.replaceMessages(messages);
+      
+      // 2. Apply model configuration for session
+      await this.modelManager.applyModelForSession(this.agent, sessionKey);
+      
+      // 3. Build user message
+      const userMessage = this.buildUserMessage(msg);
+      
+      // 4. Start task feedback
+      this.feedbackCoordinator.startTask();
+      
+      // 5. Execute agent
+      await this.executeAgent(userMessage, context);
+      
+      // 6. Save session messages
+      await this.sessionStore.save(sessionKey, this.agent.state.messages);
+      
+      // 7. End task feedback
+      this.feedbackCoordinator.endTask();
+      
+    } catch (error) {
+      log.error({ err: error, sessionKey }, 'Error in agent orchestration');
+      this.feedbackCoordinator.endTask();
+      throw error;
+    }
+  }
+
+  /**
+   * Execute the agent with a user message
+   */
+  private async executeAgent(
+    userMessage: AgentMessage,
+    _context: SessionContext
+  ): Promise<void> {
+    // Prompt agent with user message
+    await this.agent.prompt(userMessage);
+    
+    // Wait for agent to become idle
+    await this.agent.waitForIdle();
+  }
+
+  /**
+   * Build an agent message from an inbound message
+   */
+  private buildUserMessage(msg: InboundMessage): AgentMessage {
+    return {
+      role: 'user',
+      content: msg.content,
+      timestamp: Date.now(),
+    };
+  }
+
+  /**
+   * Get the current agent model ID
+   */
+  getCurrentModel(): string {
+    return this.modelManager.getCurrentModel();
+  }
+
+  /**
+   * Check if agent is currently processing
+   */
+  isProcessing(): boolean {
+    return this.agent.state.messages.length > 0;
+  }
+
+  /**
+   * Abort current agent execution
+   */
+  abort(): void {
+    this.agent.abort();
+  }
+}

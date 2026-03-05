@@ -6,7 +6,9 @@ export type LifecycleEventType =
   | 'llm_response'
   | 'tool_call_start'
   | 'tool_call_end'
-  | 'conversation_end';
+  | 'conversation_end'
+  | 'session_start'
+  | 'session_end';
 
 export interface LifecycleEventData<T = unknown> {
   type: LifecycleEventType;

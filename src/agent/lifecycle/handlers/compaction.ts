@@ -34,7 +34,7 @@ export class CompactionLifecycleHandler
 
   async handle(
     event: LifecycleEventData<LLMResponsePayload>,
-    context: AgentContext
+    _context: AgentContext
   ): Promise<void> {
     const { sessionKey } = event;
 

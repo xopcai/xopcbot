@@ -270,7 +270,8 @@ export function isRecoverableNetworkError(
  * Create a retry runner with Telegram-specific defaults
  */
 export function createRetryRunner(options: RetryOptions = {}) {
-  const config = resolveRetryConfig(DEFAULT_RETRY_CONFIG, options);
+  const _config = resolveRetryConfig(DEFAULT_RETRY_CONFIG, options);
+  void _config; // Config available for future use in retry runner
 
   return async <T>(fn: () => Promise<T>, label?: string): Promise<T> => {
     return withRetry(fn, {

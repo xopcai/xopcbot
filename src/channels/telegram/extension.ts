@@ -39,6 +39,11 @@ import { createRetryRunner, isRecoverableNetworkError } from '../../infra/retry.
 import { createLogger } from '../../utils/logger.js';
 import { compressAudio } from '../../utils/audio.js';
 import { getMimeType, getMediaCategory } from '../../utils/media.js';
+import { telegramUpdateDedupe, buildTelegramUpdateKey } from './dedupe.js';
+import { sentMessageCache } from './sent-cache.js';
+import { MediaGroupBuffer } from './media-group.js';
+import { InboundDebounce, buildTelegramDebounceKey } from './debounce.js';
+import type { Message } from '@grammyjs/types';
 import type { Config } from '../../config/index.js';
 import { createTelegramCommandHandler } from './command-handler.js';
 import { generateSessionKey } from '../../commands/session-key.js';
@@ -195,6 +200,13 @@ function createMessageProcessor(deps: MessageProcessorDeps) {
   };
 
   const processMessageInternal = async (ctx: Context, accountId: string) => {
+    // 1. Update deduplication - skip if already processed
+    const updateKey = buildTelegramUpdateKey(ctx);
+    if (updateKey && telegramUpdateDedupe.checkAndAdd(updateKey)) {
+      log.debug({ updateKey, accountId }, 'Duplicate update detected, skipping');
+      return;
+    }
+
     const account = accountManager.getAccount(accountId);
     if (!account) {
       log.warn({ accountId }, 'Account not found for message processing');
@@ -407,7 +419,7 @@ function createMessageProcessor(deps: MessageProcessorDeps) {
 
 export class TelegramChannelExtension implements ChannelExtension {
   id = 'telegram' as const;
-  
+
   meta: ChannelMetadata = {
     id: 'telegram',
     name: 'Telegram',
@@ -428,6 +440,45 @@ export class TelegramChannelExtension implements ChannelExtension {
   private commandHandlers = new Map<string, ReturnType<typeof createTelegramCommandHandler>>();
   private bus: any = null;
   private config: Config | null = null;
+
+  // New: Media group buffer for combining album photos
+  private mediaGroupBuffer: MediaGroupBuffer;
+
+  // New: Inbound debounce for combining rapid messages
+  private inboundDebounce: InboundDebounce<{
+    ctx: Context;
+    accountId: string;
+    message: Message;
+  }>;
+
+  constructor() {
+    // Initialize media group buffer
+    this.mediaGroupBuffer = new MediaGroupBuffer({
+      timeoutMs: 500,
+      onFlush: async (messages, ctx) => {
+        await this.processMediaGroup(messages, ctx);
+      },
+    });
+
+    // Initialize inbound debounce
+    this.inboundDebounce = new InboundDebounce({
+      debounceMs: 300,
+      buildKey: (item) => buildTelegramDebounceKey(item.ctx),
+      shouldDebounce: (item) => {
+        // Don't debounce commands or media
+        const text = item.message.text ?? item.message.caption ?? '';
+        if (text.startsWith('/')) return false;
+        if (item.message.photo || item.message.document || item.message.video) return false;
+        return text.length < 100; // Only debounce short messages
+      },
+      onFlush: async (items) => {
+        await this.processDebouncedMessages(items);
+      },
+      onError: (err, items) => {
+        log.error({ err, itemCount: items.length }, 'Debounced message processing failed');
+      },
+    });
+  }
 
   async init(options: ChannelInitOptions): Promise<void> {
     this.bus = options.bus;
@@ -556,10 +607,29 @@ export class TelegramChannelExtension implements ChannelExtension {
         await commandHandler!.handleStart(ctx);
       });
 
-      // Register message handler
+      // Register message handler with media group and debounce support
       const enqueueMessage = this.messageProcessor;
       bot.on('message', async (ctx) => {
         try {
+          // Check for media group (photo album)
+          const mediaGroupId = (ctx.message as { media_group_id?: string }).media_group_id;
+          if (mediaGroupId) {
+            const buffered = await this.mediaGroupBuffer.process(ctx);
+            if (buffered) return; // Message was buffered, will be processed as group
+          }
+
+          // Process through inbound debounce for text messages
+          const debounceKey = buildTelegramDebounceKey(ctx);
+          if (debounceKey) {
+            await this.inboundDebounce.process({
+              ctx,
+              accountId,
+              message: ctx.message,
+            });
+            return;
+          }
+
+          // Process immediately (no debounce key)
           await enqueueMessage(ctx, accountId);
         } catch (err) {
           log.error({ accountId, err }, 'Failed to process message');
@@ -644,6 +714,10 @@ export class TelegramChannelExtension implements ChannelExtension {
   }
 
   async stop(accountId?: string): Promise<void> {
+    // Flush all pending buffers before stopping
+    await this.mediaGroupBuffer.flushAll();
+    await this.inboundDebounce.flushAll();
+
     const accounts = accountId
       ? [this.accountManager.getAccount(accountId)].filter(Boolean) as TelegramAccountConfig[]
       : this.accountManager.getAllAccounts();
@@ -658,6 +732,109 @@ export class TelegramChannelExtension implements ChannelExtension {
       });
       log.info({ accountId: account.accountId }, 'Telegram account stopped');
     }
+  }
+
+  /**
+   * Process a media group (album) as a single message
+   */
+  private async processMediaGroup(messages: Message[], firstCtx: Context): Promise<void> {
+    const accountId = this.getAccountIdFromContext(firstCtx);
+    if (!accountId) {
+      log.warn('Could not determine account ID for media group');
+      return;
+    }
+
+    // Combine all photos into attachments
+    const allMedia: Array<{ type: string; fileId: string }> = [];
+    for (const msg of messages) {
+      if (msg.photo?.length) {
+        allMedia.push({ type: 'photo', fileId: msg.photo[msg.photo.length - 1].file_id });
+      }
+      if (msg.document) allMedia.push({ type: 'document', fileId: msg.document.file_id });
+      if (msg.video) allMedia.push({ type: 'video', fileId: msg.video.file_id });
+    }
+
+    // Get combined caption from last message with caption
+    const lastMessageWithCaption = [...messages].reverse().find(m => m.caption || m.text);
+    const combinedCaption = lastMessageWithCaption?.caption || lastMessageWithCaption?.text || '';
+
+    // Create synthetic context with combined media
+    const syntheticCtx = {
+      ...firstCtx,
+      message: {
+        ...firstCtx.message,
+        caption: combinedCaption,
+        photo: undefined, // Processed separately via allMedia
+      },
+    };
+
+    log.info({
+      accountId,
+      chatId: firstCtx.chat?.id,
+      messageCount: messages.length,
+      mediaCount: allMedia.length,
+    }, 'Processing media group');
+
+    await this.messageProcessor(syntheticCtx as Context, accountId);
+  }
+
+  /**
+   * Process debounced (combined) messages
+   */
+  private async processDebouncedMessages(items: Array<{ ctx: Context; accountId: string; message: Message }>): Promise<void> {
+    if (items.length === 0) return;
+
+    const first = items[0];
+    const accountId = first.accountId;
+
+    if (items.length === 1) {
+      // Single message - process normally
+      await this.messageProcessor(first.ctx, accountId);
+      return;
+    }
+
+    // Combine messages
+    const combinedText = items
+      .map(item => item.message.text ?? item.message.caption ?? '')
+      .filter(Boolean)
+      .join('\n');
+
+    // Create synthetic context with combined text
+    const syntheticCtx = {
+      ...first.ctx,
+      message: {
+        ...first.message,
+        text: combinedText,
+        caption: undefined,
+      },
+    };
+
+    log.info({
+      accountId,
+      chatId: first.ctx.chat?.id,
+      messageCount: items.length,
+      combinedLength: combinedText.length,
+    }, 'Processing debounced messages');
+
+    await this.messageProcessor(syntheticCtx as Context, accountId);
+  }
+
+  /**
+   * Get account ID from context (helper method)
+   */
+  private getAccountIdFromContext(ctx: Context): string | undefined {
+    // Find account by matching bot info
+    const botId = ctx.me?.id;
+    if (!botId) return undefined;
+
+    for (const account of this.accountManager.getAllAccounts()) {
+      const bot = this.accountManager.getBot(account.accountId);
+      if (bot && ctx.me?.username === ctx.me?.username) {
+        return account.accountId;
+      }
+    }
+
+    return 'default'; // Fallback to default
   }
 
   async send(options: ChannelSendOptions): Promise<ChannelSendResult> {
@@ -757,7 +934,8 @@ export class TelegramChannelExtension implements ChannelExtension {
           followOptions.reply_to_message_id = sentMessageId;
           if (silent) followOptions.disable_notification = true;
           
-          await bot.api.sendMessage(chatId, followHtml, followOptions);
+          const followResult = await bot.api.sendMessage(chatId, followHtml, followOptions);
+          sentMessageCache.record(chatId, followResult.message_id);
           log.info({ chatId, followUpLength: followUpText.length }, 'Sent follow-up text after media');
         }
       } else if (mediaUrl) {
@@ -987,6 +1165,11 @@ export class TelegramChannelExtension implements ChannelExtension {
             await bot.api.sendMessage(chatId, chunks[i].html, replyOptions);
           }, `sendMessage-reply-${i}`);
         }
+      }
+
+      // Record sent message in cache
+      if (sentMessageId) {
+        sentMessageCache.record(chatId, sentMessageId);
       }
 
       return { messageId: String(sentMessageId), chatId, success: true };

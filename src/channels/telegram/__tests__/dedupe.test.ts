@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { DedupeCache, buildTelegramUpdateKey } from '../telegram/dedupe.js';
+import { DedupeCache, buildTelegramUpdateKey } from '../dedupe.js';
 
 describe('DedupeCache', () => {
   let cache: DedupeCache;

@@ -12,6 +12,7 @@ import type { ModelManager } from '../models/index.js';
 import type { SessionContext } from '../session/session-context.js';
 import type { AgentEventHandler } from './agent-event-handler.js';
 import type { FeedbackCoordinator } from '../feedback/feedback-coordinator.js';
+import { sanitizeMessages, cleanTrailingErrors } from '../memory/message-sanitizer.js';
 import { createLogger } from '../../utils/logger.js';
 
 const log = createLogger('AgentOrchestrator');
@@ -50,7 +51,10 @@ export class AgentOrchestrator {
     try {
       // 1. Load session history
       const messages = await this.sessionStore.load(sessionKey);
-      this.agent.replaceMessages(messages);
+      
+      // Clean any trailing errors from previous sessions (defensive)
+      const cleanedHistory = cleanTrailingErrors(messages);
+      this.agent.replaceMessages(cleanedHistory);
       
       // 2. Apply model configuration for session
       await this.modelManager.applyModelForSession(this.agent, sessionKey);
@@ -64,10 +68,18 @@ export class AgentOrchestrator {
       // 5. Execute agent
       await this.executeAgent(userMessage, context);
       
-      // 6. Save session messages
-      await this.sessionStore.save(sessionKey, this.agent.state.messages);
+      // 6. Sanitize messages before saving (remove error messages, empty content)
+      const rawMessages = this.agent.state.messages;
+      const { messages: sanitizedMessages, removed } = sanitizeMessages(rawMessages);
       
-      // 7. End task feedback
+      if (removed > 0) {
+        log.info({ sessionKey, removed }, 'Removed problematic messages before saving');
+      }
+      
+      // 7. Save session messages
+      await this.sessionStore.save(sessionKey, sanitizedMessages);
+      
+      // 8. End task feedback
       this.feedbackCoordinator.endTask();
       
     } catch (error) {

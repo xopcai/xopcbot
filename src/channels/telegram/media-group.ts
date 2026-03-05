@@ -150,5 +150,7 @@ export class MediaGroupBuffer {
       clearTimeout(entry.timer);
     }
     this.buffer.clear();
+    // Reset processing chain to prevent any pending flush operations
+    this.processing = Promise.resolve();
   }
 }

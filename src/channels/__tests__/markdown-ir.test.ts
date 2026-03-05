@@ -8,7 +8,6 @@ import {
   renderToTelegramHtml,
   renderToPlainText,
   markdownToTelegramChunks,
-  chunkMarkdownIR,
 } from '../markdown-ir.js';
 
 describe('parseMarkdownToIR', () => {
@@ -74,7 +73,13 @@ describe('parseMarkdownToIR', () => {
     const ir = parseMarkdownToIR('**bold *italic***');
     const bold = ir.nodes[0].children![0];
     expect(bold.type).toBe('bold');
-    expect(bold.children![0].type).toBe('italic');
+    // Content is "bold *italic*" which parses to text + italic
+    expect(bold.children).toBeDefined();
+    expect(bold.children!.length).toBeGreaterThan(0);
+    // Find the italic node among children
+    const italicNode = bold.children!.find(n => n.type === 'italic');
+    expect(italicNode).toBeDefined();
+    expect(italicNode!.content).toBe('italic');
   });
 
   it('should handle multiple paragraphs', () => {

@@ -7,7 +7,7 @@
 
 import { Agent, type AgentEvent, type AgentMessage } from '@mariozechner/pi-agent-core';
 import type { Model, Api } from '@mariozechner/pi-ai';
-import type { MessageBus, InboundMessage } from '../bus/index.js';
+import { MessageBusShutdownError, type MessageBus, type InboundMessage } from '../bus/index.js';
 import type { Config, AgentDefaults } from '../config/schema.js';
 import type { ChannelManager } from '../channels/manager.js';
 
@@ -421,6 +421,10 @@ export class AgentService {
         const msg = await this.bus.consumeInbound();
         await this.handleInboundMessage(msg);
       } catch (error) {
+        // MessageBusShutdownError is expected during graceful shutdown
+        if (error instanceof MessageBusShutdownError) {
+          break;
+        }
         log.error({ err: error }, 'Error in agent loop');
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }

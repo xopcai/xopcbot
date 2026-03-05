@@ -34,6 +34,8 @@ import { ToolUsageAnalyzer } from './tool-usage-analyzer.js';
 import { ToolChainTracker } from './tool-chain-tracker.js';
 import { ErrorPatternMatcher } from './error-pattern-matcher.js';
 import { SelfVerifyMiddleware } from './middleware/self-verify.js';
+import { LifecycleManager } from './lifecycle/index.js';
+import { CompactionLifecycleHandler } from './lifecycle/handlers/compaction.js';
 
 const log = createLogger('AgentService');
 
@@ -51,7 +53,7 @@ export interface AgentServiceConfig {
   maxTaskDurationMs?: number;
 }
 
-interface AgentContext {
+export interface AgentContext {
   channel: string;
   chatId: string;
   sessionKey: string;
@@ -97,7 +99,8 @@ private systemReminder: SystemReminder;
   private toolUsageAnalyzer: ToolUsageAnalyzer;
   private toolChainTracker: ToolChainTracker;
   private errorPatternMatcher: ErrorPatternMatcher;
-private selfVerifyMiddleware: SelfVerifyMiddleware;
+  private selfVerifyMiddleware: SelfVerifyMiddleware;
+  private lifecycleManager: LifecycleManager;
 
   // Stream handle for current context (for progress updates)
   private currentStreamHandle: {
@@ -298,9 +301,31 @@ private selfVerifyMiddleware: SelfVerifyMiddleware;
       logMatches: true,
     });
 
+    // Initialize lifecycle manager
+    this.lifecycleManager = new LifecycleManager();
+    this.initializeLifecycleHandlers();
+
     // Setup shutdown handlers
     process.on('SIGINT', () => this.dispose());
     process.on('SIGTERM', () => this.dispose());
+  }
+
+  // ============================================================================
+  // Lifecycle Handlers
+  // ============================================================================
+
+  private initializeLifecycleHandlers(): void {
+    this.lifecycleManager.on('llm_response', new CompactionLifecycleHandler({
+      minMessages: 20,
+      maxTokens: 8000,
+      preserveReasoning: true,
+      accumulateUsage: true,
+    }));
+
+    log.info(
+      { handlers: this.lifecycleManager.getRegisteredHandlers() },
+      'Lifecycle handlers initialized'
+    );
   }
 
   // ============================================================================
@@ -1097,15 +1122,23 @@ private selfVerifyMiddleware: SelfVerifyMiddleware;
 
   private handleEvent(event: AgentEvent): void {
     switch (event.type) {
-      case 'agent_start':
+      case 'agent_start': {
         log.debug('Agent turn started');
-        this.taskStartTime = Date.now(); // Record task start time for timeout
+        this.taskStartTime = Date.now();
         this.progressManager.startTask();
-        
-        // Record request and check limits
+
         const result = this.requestLimiter.recordRequest();
-        
-        // ✅ Enhanced: Notify about request limit status
+
+        if (this.currentContext) {
+          this.lifecycleManager.emit('llm_request', this.currentContext.sessionKey, {
+            requestNumber: result.count,
+            maxRequests: result.limit,
+            messageCount: this.agent.state.messages.length,
+          }, this.currentContext).catch((err) => {
+            log.warn({ err }, 'Failed to emit llm_request lifecycle event');
+          });
+        }
+
         this.progressManager.onRequestLimitStatus(
           result.count,
           result.limit,
@@ -1113,33 +1146,78 @@ private selfVerifyMiddleware: SelfVerifyMiddleware;
           result.isWarning,
           result.shouldStop
         );
-        
+
         if (result.shouldStop) {
           log.error({ count: result.count, limit: result.limit }, 'Request limit reached, aborting turn');
           this.agent.abort();
         }
         break;
-      case 'turn_start':
+      }
+      case 'turn_start': {
         log.debug('Turn started');
         this.progressManager.onTurnStart();
+
+        if (this.currentContext) {
+          const messages = this.agent.state.messages;
+          const userMessages = messages.filter(m => m.role === 'user');
+          const isFirstTurn = userMessages.length <= 1;
+
+          if (isFirstTurn) {
+            const userMessage = userMessages[0];
+            const userContent = userMessage
+              ? (typeof userMessage.content === 'string'
+                  ? userMessage.content
+                  : extractTextContent(userMessage.content as Array<{ type: string; text?: string }>))
+              : '';
+
+            this.lifecycleManager.emit('conversation_start', this.currentContext.sessionKey, {
+              userMessage: userContent,
+              model: this.modelManager.getCurrentModel()?.toString() || '',
+            }, this.currentContext).catch((err) => {
+              log.warn({ err }, 'Failed to emit conversation_start lifecycle event');
+            });
+          }
+        }
         break;
+      }
       case 'message_start':
         if (event.message.role === 'assistant') log.debug('Assistant response starting');
         break;
-      case 'message_end':
+      case 'message_end': {
         if (event.message.role === 'assistant') {
           const content = event.message.content;
           const text = Array.isArray(content)
             ? extractTextContent(content as Array<{ type: string; text?: string }>)
             : String(content);
           log.debug({ contentLength: text.length }, 'Assistant response complete');
+
+          if (this.currentContext) {
+            this.lifecycleManager.emit('llm_response', this.currentContext.sessionKey, {
+              response: text,
+              usage: (event.message as any).usage,
+              toolCalls: (event.message as any).tool_calls,
+            }, this.currentContext).catch((err) => {
+              log.warn({ err }, 'Failed to emit llm_response lifecycle event');
+            });
+          }
         }
         break;
-      case 'tool_execution_start':
+      }
+      case 'tool_execution_start': {
         log.debug({ tool: event.toolName, args: event.args }, 'Tool execution started');
-        // Trigger progress manager to send feedback
         this.progressManager.onToolStart(event.toolName, event.args || {});
-// ✅ Harness Optimization: Record tool call in chain
+
+        if (this.currentContext) {
+          this.lifecycleManager.emit('tool_call_start', this.currentContext.sessionKey, {
+            toolName: event.toolName,
+            arguments: event.args || {},
+            attemptNumber: 1,
+            maxAttempts: 3,
+          }, this.currentContext).catch((err) => {
+            log.warn({ err }, 'Failed to emit tool_call_start lifecycle event');
+          });
+        }
+
         if (this.currentContext) {
           this.toolChainTracker.recordCall(
             this.currentContext.sessionKey,
@@ -1148,21 +1226,32 @@ private selfVerifyMiddleware: SelfVerifyMiddleware;
             0
           );
         }
-// Track file edits for self-verify middleware (harness engineering)
         this.trackFileEditForSelfVerify(event.toolName, event.args);
         break;
+      }
       case 'tool_execution_update':
-        // Send tool update feedback (streaming)
         this.progressManager.onToolUpdate(event.toolName, event.partialResult);
         break;
-      case 'tool_execution_end':
+      case 'tool_execution_end': {
         log.debug({ tool: event.toolName, isError: event.isError }, 'Tool execution complete');
-        // Trigger progress manager for tool end
         this.progressManager.onToolEnd(event.toolName, event.result, event.isError);
-// ✅ Harness Optimization: Append system reminder to tool result
-        event.result = this.systemReminder.appendToResult(event.result);
-        // ✅ Harness Optimization: Record tool usage for analytics
+
         const durationMs = (event as any).durationMs || 0;
+        if (this.currentContext) {
+          this.lifecycleManager.emit('tool_call_end', this.currentContext.sessionKey, {
+            toolName: event.toolName,
+            success: !event.isError,
+            result: event.result,
+            error: event.isError ? String(event.result) : undefined,
+            durationMs,
+          }, this.currentContext).catch((err) => {
+            log.warn({ err }, 'Failed to emit tool_call_end lifecycle event');
+          });
+        }
+        // Harness Optimization: Append system reminder to tool result
+        event.result = this.systemReminder.appendToResult(event.result);
+        // Harness Optimization: Record tool usage for analytics
+        // Note: durationMs already extracted above for lifecycle event
         this.toolUsageAnalyzer.recordUsage(
           event.toolName,
           !event.isError,
@@ -1237,6 +1326,7 @@ private selfVerifyMiddleware: SelfVerifyMiddleware;
           }
         }
         break;
+      }
       case 'turn_end':
         log.debug('Turn complete');
         // Reset reliability counters

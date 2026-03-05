@@ -8,19 +8,11 @@ export type { SessionUsage } from './session-tracker.js';
 export { ModelManager } from './models/index.js';
 
 // Legacy helpers (backward compatibility)
-export { loadBootstrapFiles, extractTextContent, stripFrontMatter, truncateBootstrapContent } from './helpers.js';
+export { loadBootstrapFiles, extractTextContent } from './helpers.js';
 export type { BootstrapFile, TruncateResult } from './helpers.js';
 
 export {
-  loadWorkspaceBootstrapFiles,
-  ensureBootstrapFiles,
-  readFileWithCache,
   fileExists,
-  stripFrontMatter as stripWorkspaceFrontMatter,
-  isWorkspaceOnboardingCompleted,
-  filterBootstrapFilesForSession,
-  invalidateCache,
-  clearWorkspaceCache,
   // Constants
   DEFAULT_AGENTS_FILENAME,
   DEFAULT_SOUL_FILENAME,
@@ -34,7 +26,7 @@ export {
 } from './workspace.js';
 export type { WorkspaceBootstrapFile, WorkspaceBootstrapFileName, WorkspaceOnboardingState } from './workspace.js';
 
-export { buildSystemPrompt, buildMinimalSystemPrompt, getBootstrapFile, hasBootstrapFile } from './system-prompt.js';
+export { buildSystemPrompt } from './system-prompt.js';
 export type { SystemPromptOptions, MemoryCitationsMode } from './system-prompt.js';
 
 // Model module
@@ -45,7 +37,6 @@ export {
   ProgressFeedbackManager, 
   progressFeedbackManager,
   formatProgressMessage,
-  formatHeartbeatMessage,
 } from './progress.js';
 export type { 
   ProgressFeedbackConfig, 
@@ -64,9 +55,6 @@ export type { RequestLimiterConfig, RequestLimitResult } from './request-limiter
 // Retry and timeout modules (P0 optimizations)
 export { 
   retryWithBackoff, 
-  retryWithResult, 
-  withRetry, 
-  RetryManager,
   DEFAULT_RETRY_CONFIG 
 } from './retry.js';
 export type { 
@@ -77,9 +65,6 @@ export type {
 
 export { 
   executeWithTimeout, 
-  executeWithTimeoutResult, 
-  withTimeout, 
-  TimeoutManager,
   TimeoutError,
   DEFAULT_TIMEOUT_CONFIG 
 } from './timeout-wrapper.js';
@@ -92,7 +77,6 @@ export type {
 // Memory modules
 export { generateStructuredSummary, formatSummaryAsText, createSummaryMessage } from './memory/summary-generator.js';
 export type { ConversationSummary, ToolCallSummary } from './memory/summary-generator.js';
-export { calculateCompactionRange } from './memory/compaction.js';
 
 // P1: Structured output (XML Element Builder)
 export {

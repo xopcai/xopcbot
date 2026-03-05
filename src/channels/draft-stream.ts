@@ -9,6 +9,7 @@
 import type { Bot } from 'grammy';
 import { createLogger } from '../utils/logger.js';
 import type { ProgressStage } from './types.js';
+import { formatTelegramMessage } from './format.js';
 
 const log = createLogger('DraftStream');
 
@@ -104,15 +105,20 @@ export function createTelegramDraftStream(
 
     lastSentText = trimmed;
 
+    // Convert markdown to HTML when using HTML parse mode
+    const messageText = options.parseMode === 'HTML' 
+      ? formatTelegramMessage(trimmed).html 
+      : trimmed;
+
     try {
       if (typeof streamMessageId === 'number') {
         // Edit existing message
-        await options.api.editMessageText(chatId, streamMessageId, trimmed, {
+        await options.api.editMessageText(chatId, streamMessageId, messageText, {
           parse_mode: options.parseMode,
         });
       } else {
         // Create new message
-        const sent = await options.api.sendMessage(chatId, trimmed, {
+        const sent = await options.api.sendMessage(chatId, messageText, {
           parse_mode: options.parseMode,
           ...threadParams,
         });

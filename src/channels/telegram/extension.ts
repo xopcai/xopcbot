@@ -32,7 +32,7 @@ import {
 } from '../access-control.js';
 import { readUpdateOffset, writeUpdateOffset } from '../update-offset-store.js';
 import { draftStreamManager } from '../draft-stream.js';
-import { formatTelegramMessage, splitTelegramMessage, markdownToPlainText, renderTelegramHtmlText } from '../format.js';
+import { formatTelegramMessage, renderTelegramHtmlText, markdownToTelegramChunks } from '../format.js';
 import { splitTelegramCaption } from './caption.js';
 import { createRetryRunner, isRecoverableNetworkError } from '../../infra/retry.js';
 import { createLogger } from '../../utils/logger.js';
@@ -995,15 +995,34 @@ export class TelegramChannelExtension implements ChannelExtension {
         
         // Fallback to text message if all TTS attempts failed
         if (ttsErrorOccurred && !sentMessageId) {
-          const { html } = formatTelegramMessage(content || '');
-          const chunks = splitTelegramMessage(html, MESSAGE_CHUNK_SIZE);
+          // Use IR-based chunking for better structure preservation
+          const chunks = markdownToTelegramChunks(content || '', MESSAGE_CHUNK_SIZE);
           
           const sendOptions: any = { parse_mode: 'HTML' };
           if (threadId) sendOptions.message_thread_id = parseInt(threadId, 10);
           if (replyToMessageId) sendOptions.reply_to_message_id = parseInt(replyToMessageId, 10);
           if (silent) sendOptions.disable_notification = true;
 
-          sentMessageId = (await bot.api.sendMessage(chatId, chunks[0], sendOptions)).message_id;
+          // Send first chunk with retry
+          const retryRunner = createRetryRunner({
+            attempts: 3,
+            minDelayMs: 300,
+            shouldRetry: (err) => isRecoverableNetworkError(err, 'send'),
+          });
+
+          sentMessageId = await retryRunner(async () => {
+            const result = await bot.api.sendMessage(chatId, chunks[0].html, sendOptions);
+            return result.message_id;
+          }, 'tts-fallback-send').catch(async (htmlErr) => {
+            // Fallback to plain text on HTML parse error
+            if (isTelegramHtmlParseError(htmlErr)) {
+              const plainResult = await bot.api.sendMessage(chatId, chunks[0].text, {
+                reply_to_message_id: replyToMessageId ? parseInt(replyToMessageId, 10) : undefined,
+              });
+              return plainResult.message_id;
+            }
+            throw htmlErr;
+          });
           
           // Send remaining chunks
           for (let i = 1; i < chunks.length; i++) {
@@ -1014,7 +1033,7 @@ export class TelegramChannelExtension implements ChannelExtension {
             if (threadId) replyOptions.message_thread_id = parseInt(threadId, 10);
             if (silent) replyOptions.disable_notification = true;
             
-            await bot.api.sendMessage(chatId, chunks[i], replyOptions);
+            await retryRunner(() => bot.api.sendMessage(chatId, chunks[i].html, replyOptions), `tts-fallback-reply-${i}`);
           }
           
           log.info({ chatId, chunks: chunks.length }, 'Fallback text message sent');

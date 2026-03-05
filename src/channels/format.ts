@@ -96,6 +96,47 @@ export function markdownToTelegramHtml(markdown: string): string {
 }
 
 /**
+ * Convert Markdown to plain text (strip markdown syntax)
+ * Used for fallback when HTML parsing fails
+ */
+export function markdownToPlainText(markdown: string): string {
+  let text = markdown;
+
+  // Code blocks - keep content, remove markers
+  text = text.replace(/```(\w*)\n([\s\S]*?)```/g, '$2');
+
+  // Inline code - keep content, remove backticks
+  text = text.replace(/`([^`]+)`/g, '$1');
+
+  // Bold - keep content, remove asterisks
+  text = text.replace(/\*\*([^*]+)\*\*/g, '$1');
+
+  // Italic - keep content, remove asterisks/underscores
+  text = text.replace(/\*([^*]+)\*/g, '$1');
+  text = text.replace(/_([^_]+)_/g, '$1');
+
+  // Strikethrough - keep content, remove tildes
+  text = text.replace(/~~([^~]+)~~/g, '$1');
+
+  // Links - convert to "text (url)" format
+  text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)');
+
+  // Blockquotes - remove marker, keep content
+  text = text.replace(/^&gt; (.*$)/gm, '$1');
+  text = text.replace(/^> (.*$)/gm, '$1');
+
+  // List markers - remove markers, keep content
+  text = text.replace(/^\* (.*$)/gm, '$1');
+  text = text.replace(/^- (.*$)/gm, '$1');
+  text = text.replace(/^\d+\. (.*$)/gm, '$1');
+
+  // Headers - remove markers, keep content
+  text = text.replace(/^#{1,6} (.*$)/gm, '$1');
+
+  return text.trim();
+}
+
+/**
  * Wrap standalone file references in &lt;code&gt; tags
  * Prevents Telegram from generating domain registrar previews
  */

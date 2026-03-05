@@ -32,7 +32,7 @@ import {
 } from '../access-control.js';
 import { readUpdateOffset, writeUpdateOffset } from '../update-offset-store.js';
 import { draftStreamManager } from '../draft-stream.js';
-import { formatTelegramMessage, splitTelegramMessage } from '../format.js';
+import { formatTelegramMessage, splitTelegramMessage, markdownToPlainText } from '../format.js';
 import { createLogger } from '../../utils/logger.js';
 import type { Config } from '../../config/index.js';
 import { createTelegramCommandHandler } from './command-handler.js';
@@ -1009,8 +1009,9 @@ export class TelegramChannelExtension implements ChannelExtension {
           if (replyToMessageId) plainSendOptions.reply_to_message_id = parseInt(replyToMessageId, 10);
           if (silent) plainSendOptions.disable_notification = true;
 
-          // Send with plain text chunks
-          const plainChunks = splitTelegramMessage(content || '', MESSAGE_CHUNK_SIZE);
+          // Convert markdown to plain text and send
+          const plainContent = markdownToPlainText(content || '');
+          const plainChunks = splitTelegramMessage(plainContent, MESSAGE_CHUNK_SIZE);
           sentMessageId = (await bot.api.sendMessage(chatId, plainChunks[0], plainSendOptions)).message_id;
 
           // Send remaining chunks as replies
@@ -1064,13 +1065,13 @@ export class TelegramChannelExtension implements ChannelExtension {
 
     return {
       update: (text: string) => {
-        const { html } = formatTelegramMessage(text);
-        draftStream.update(html);
+        // draftStream now handles formatTelegramMessage internally
+        draftStream.update(text);
       },
       /** Update stream with progress stage indicator */
       updateProgress: (text: string, stage: ProgressStage, detail?: string) => {
-        const { html } = formatTelegramMessage(text);
-        draftStream.updateWithProgress(html, stage, detail);
+        // draftStream now handles formatTelegramMessage internally
+        draftStream.updateWithProgress(text, stage, detail);
       },
       /** Set progress stage without updating text */
       setProgress: (stage: ProgressStage, detail?: string) => {

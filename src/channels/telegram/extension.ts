@@ -32,24 +32,21 @@ import {
 } from '../access-control.js';
 import { readUpdateOffset, writeUpdateOffset } from '../update-offset-store.js';
 import { draftStreamManager } from '../draft-stream.js';
-import { formatTelegramMessage, renderTelegramHtmlText, markdownToTelegramChunks } from '../format.js';
+import { renderTelegramHtmlText, markdownToTelegramChunks } from '../format.js';
 import { splitTelegramCaption } from './caption.js';
+import { isTelegramHtmlParseError } from './errors.js';
 import { createRetryRunner, isRecoverableNetworkError } from '../../infra/retry.js';
 import { createLogger } from '../../utils/logger.js';
+import { compressAudio } from '../../utils/audio.js';
+import { getMimeType, getMediaCategory } from '../../utils/media.js';
 import type { Config } from '../../config/index.js';
 import { createTelegramCommandHandler } from './command-handler.js';
 import { generateSessionKey } from '../../commands/session-key.js';
 import { transcribe, isSTTAvailable } from '../../stt/index.js';
 import type { ProgressStage } from '../types.js';
 import { speak, isTTSAvailable } from '../../tts/index.js';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import { writeFile, unlink } from 'fs/promises';
-import { tmpdir } from 'os';
-import { join } from 'path';
 
 const log = createLogger('TelegramExtension');
-const execAsync = promisify(exec);
 
 // =============================================================================
 // Constants
@@ -60,111 +57,6 @@ const STT_MAX_VOICE_DURATION_SECONDS = 60;
 
 /** Maximum message chunk size (leaving margin for Telegram's 4096 limit) */
 const MESSAGE_CHUNK_SIZE = 3800;
-
-/** TTS maximum retry attempts */
-const TTS_MAX_RETRIES = 2;
-
-/** Retry delay base in milliseconds for exponential backoff */
-const TTS_RETRY_DELAY_MS = 1000;
-
-// Regex to detect Telegram HTML parse errors
-const TELEGRAM_PARSE_ERR_RE = /can't parse entities|parse entities|find end of the entity|Unmatched end tag/i;
-
-/**
- * Check if error is a Telegram HTML parse error
- */
-function isTelegramHtmlParseError(err: unknown): boolean {
-  if (!(err instanceof Error)) {
-    return false;
-  }
-  return TELEGRAM_PARSE_ERR_RE.test(err.message);
-}
-
-/**
- * Compress audio buffer using ffmpeg (wav -> opus)
- * Returns original buffer if compression fails
- */
-async function compressAudio(audioBuffer: Buffer, inputFormat: string): Promise<{ buffer: Buffer; format: string }> {
-  if (inputFormat !== 'wav') {
-    return { buffer: audioBuffer, format: inputFormat };
-  }
-
-  const tempDir = tmpdir();
-  const inputPath = join(tempDir, `input_${Date.now()}.wav`);
-  const outputPath = join(tempDir, `output_${Date.now()}.opus`);
-
-  try {
-    // Write input file
-    await writeFile(inputPath, audioBuffer);
-
-    // Compress using ffmpeg
-    await execAsync(`ffmpeg -i "${inputPath}" -c:a libopus -b:a 24k -vbr on "${outputPath}" -y`);
-
-    // Read output file
-    const { readFile } = await import('fs/promises');
-    const compressedBuffer = await readFile(outputPath);
-
-    log.info({
-      originalSize: audioBuffer.length,
-      compressedSize: compressedBuffer.length,
-      ratio: (compressedBuffer.length / audioBuffer.length * 100).toFixed(1) + '%'
-    }, 'Audio compressed successfully');
-
-    return { buffer: compressedBuffer, format: 'opus' };
-  } catch (error) {
-    log.warn({ error, inputFormat }, 'Audio compression failed, using original');
-    return { buffer: audioBuffer, format: inputFormat };
-  } finally {
-    // Cleanup temp files
-    try {
-      await unlink(inputPath).catch(() => {});
-      await unlink(outputPath).catch(() => {});
-    } catch {}
-  }
-}
-
-// ============================================
-// MIME Type Helper
-// ============================================
-
-function getMimeType(type: string, filePath?: string): string {
-  // Try to get from file extension
-  if (filePath) {
-    const ext = filePath.split('.').pop()?.toLowerCase();
-    const extMap: Record<string, string> = {
-      jpg: 'image/jpeg',
-      jpeg: 'image/jpeg',
-      png: 'image/png',
-      gif: 'image/gif',
-      webp: 'image/webp',
-      bmp: 'image/bmp',
-      svg: 'image/svg+xml',
-      mp4: 'video/mp4',
-      mov: 'video/quicktime',
-      avi: 'video/x-msvideo',
-      webm: 'video/webm',
-      mp3: 'audio/mpeg',
-      wav: 'audio/wav',
-      ogg: 'audio/ogg',
-      pdf: 'application/pdf',
-      doc: 'application/msword',
-      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      txt: 'text/plain',
-      zip: 'application/zip',
-    };
-    if (ext && extMap[ext]) return extMap[ext];
-  }
-
-  // Fallback based on type
-  const typeMap: Record<string, string> = {
-    photo: 'image/jpeg',
-    video: 'video/mp4',
-    audio: 'audio/mpeg',
-    document: 'application/octet-stream',
-    sticker: 'image/webp',
-  };
-  return typeMap[type] || 'application/octet-stream';
-}
 
 // ============================================
 // Account Manager
@@ -833,7 +725,7 @@ export class TelegramChannelExtension implements ChannelExtension {
         log.debug({ chatId, mediaType: mimeType, method: 'sendPhoto/sendDocument' }, 'Calling Telegram API');
 
         // Determine media type from mime type
-        const mediaCategory = mimeType.split('/')[0];
+        const mediaCategory = getMediaCategory(mimeType);
         let apiResult;
         switch (mediaCategory) {
           case 'image':

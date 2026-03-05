@@ -92,6 +92,9 @@ export class AgentEventHandler {
       case 'tool_execution_end':
         this.handleToolExecutionEnd(event, context);
         break;
+      case 'message_update':
+        // Handled by AgentService for streaming, but we acknowledge it here
+        break;
       case 'turn_end':
         this.handleTurnEnd(event, context);
         break;

@@ -581,12 +581,46 @@ export class AgentService {
         }
       }
 
+      // Send typing indicator
+      if (msg.channel !== 'cli') {
+        this.bus.publishOutbound({
+          channel: msg.channel,
+          chat_id: msg.chat_id,
+          content: '',
+          type: 'typing_on',
+          metadata: {
+            accountId: msg.metadata?.accountId,
+            threadId: msg.metadata?.threadId,
+          },
+        }).catch(err => {
+          log.warn({ err }, 'Failed to send typing indicator');
+        });
+      }
+
+      // Setup streaming if channel manager is available
+      if (this.channelManagerRef && msg.channel !== 'cli') {
+        const streamHandle = this.channelManagerRef.startStream(
+          msg.channel,
+          msg.chat_id,
+          msg.metadata?.accountId
+        );
+        
+        if (streamHandle) {
+          this.setStreamHandle(streamHandle);
+        }
+      }
+
       // Process through agent orchestrator
       await this.agentOrchestrator.process(msg, sessionContext);
 
     } finally {
       // End session lifecycle
       await this.sessionLifecycleManager.endSession(sessionContext);
+      
+      // End and cleanup stream
+      await this.streamManager.end();
+      this.feedbackCoordinator.endTask();
+      
       this.sessionContextManager.clearContext();
       this.feedbackCoordinator.clearContext();
     }
@@ -636,6 +670,20 @@ export class AgentService {
   }
 
   private handleEvent(event: AgentEvent): void {
+    // Handle streaming updates
+    if (event.type === 'message_update') {
+      // Cast to any to access message property safely (though TS should narrow it)
+      const msgEvent = event as any;
+      if (msgEvent.message?.role === 'assistant') {
+        const content = msgEvent.message.content;
+        const text = Array.isArray(content)
+          ? extractTextContent(content as Array<{ type: string; text?: string }>)
+          : String(content);
+        
+        this.streamManager.update(text);
+      }
+    }
+
     const context = this.sessionContextManager.getContext();
     this.agentEventHandler.handle(event, context);
   }

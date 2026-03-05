@@ -404,6 +404,7 @@ function createMessageProcessor(deps: MessageProcessorDeps) {
       chat_id: chatId,
       content: finalContent,
       metadata: {
+        accountId,
         sessionKey,
         messageId: String(message.message_id),
         isGroup,

@@ -102,7 +102,7 @@ export class AgentEventHandler {
         this.handleAgentEnd(event, context);
         break;
       default:
-        log.debug({ eventType: event.type }, 'Unhandled event type');
+        log.debug({ eventType: (event as AgentEvent).type }, 'Unhandled event type');
     }
   }
 

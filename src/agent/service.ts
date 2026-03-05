@@ -602,11 +602,11 @@ export class AgentService {
         const streamHandle = this.channelManagerRef.startStream(
           msg.channel,
           msg.chat_id,
-          msg.metadata?.accountId
+          msg.metadata?.accountId as string | undefined
         );
         
         if (streamHandle) {
-          this.setStreamHandle(streamHandle);
+          this.setStreamHandle(streamHandle as StreamHandle);
         }
       }
 

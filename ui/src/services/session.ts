@@ -37,12 +37,9 @@ export class SessionService {
     this._token = token;
   }
 
-  /**
-   * Load session list from API
-   */
   async loadSessions(limit: number = 20): Promise<Session[]> {
-    store.getState().setLoading(true);
-    store.getState().setError(null);
+    store.getState().setSessionLoading(true);
+    store.getState().setSessionError(null);
 
     try {
       const url = apiUrl('/api/sessions?limit=' + limit);
@@ -55,35 +52,31 @@ export class SessionService {
 
       const data: SessionListResponse = await res.json();
       
-      // Filter gateway sessions and sort by updatedAt (newest first)
       const gatewaySessions = data.items
         .filter((s) => s.key.startsWith('gateway:'))
         .sort((a, b) => 
           new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
         );
 
-      store.getState().setList(gatewaySessions);
+      store.getState().setSessionList(gatewaySessions);
       return gatewaySessions;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load sessions';
-      store.getState().setError(errorMessage);
+      store.getState().setSessionError(errorMessage);
       console.error('[SessionService] Failed to load sessions:', err);
       throw err;
     } finally {
-      store.getState().setLoading(false);
+      store.getState().setSessionLoading(false);
     }
   }
 
-  /**
-   * Load specific session with pagination
-   */
   async loadSession(
     sessionKey: string, 
     offset: number = 0, 
     limit: number = 50
   ): Promise<SessionDetailResponse['session']> {
-    store.getState().setLoading(true);
-    store.getState().setError(null);
+    store.getState().setSessionLoading(true);
+    store.getState().setSessionError(null);
 
     try {
       const url = apiUrl(
@@ -98,32 +91,28 @@ export class SessionService {
 
       const data: SessionDetailResponse = await res.json();
       
-      // Update current session in store
       const session: Session = {
         key: data.session.key,
         name: data.session.name,
         updatedAt: data.session.updatedAt,
         messageCount: data.session.messages.length,
       };
-      store.getState().setCurrent(session);
+      store.getState().setCurrentSession(session);
 
       return data.session;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load session';
-      store.getState().setError(errorMessage);
+      store.getState().setSessionError(errorMessage);
       console.error('[SessionService] Failed to load session:', err);
       throw err;
     } finally {
-      store.getState().setLoading(false);
+      store.getState().setSessionLoading(false);
     }
   }
 
-  /**
-   * Create a new session
-   */
   async createSession(channel: string = 'gateway'): Promise<Session> {
-    store.getState().setLoading(true);
-    store.getState().setError(null);
+    store.getState().setSessionLoading(true);
+    store.getState().setSessionError(null);
 
     try {
       const url = apiUrl('/api/sessions');
@@ -151,21 +140,18 @@ export class SessionService {
       };
 
       store.getState().addSession(session);
-      store.getState().setCurrent(session);
+      store.getState().setCurrentSession(session);
       return session;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to create session';
-      store.getState().setError(errorMessage);
+      store.getState().setSessionError(errorMessage);
       console.error('[SessionService] Failed to create session:', err);
       throw err;
     } finally {
-      store.getState().setLoading(false);
+      store.getState().setSessionLoading(false);
     }
   }
 
-  /**
-   * Archive a session
-   */
   async archiveSession(sessionKey: string): Promise<void> {
     try {
       const url = apiUrl(`/api/sessions/${encodeURIComponent(sessionKey)}/archive`);
@@ -184,9 +170,6 @@ export class SessionService {
     }
   }
 
-  /**
-   * Delete a session
-   */
   async deleteSession(sessionKey: string): Promise<void> {
     try {
       const url = apiUrl(`/api/sessions/${encodeURIComponent(sessionKey)}`);
@@ -200,10 +183,9 @@ export class SessionService {
 
       store.getState().removeSession(sessionKey);
       
-      // If current session was deleted, clear it
-      const current = store.getState().current;
+      const current = store.getState().session.current;
       if (current?.key === sessionKey) {
-        store.getState().setCurrent(null);
+        store.getState().setCurrentSession(null);
       }
     } catch (err) {
       console.error('[SessionService] Failed to delete session:', err);
@@ -211,22 +193,15 @@ export class SessionService {
     }
   }
 
-  /**
-   * Get recent sessions with messages
-   */
   getRecentSessionsWithMessages(): Session[] {
-    return store.getState().list.filter((s) => s.messageCount > 0);
+    return store.getState().session.list.filter((s) => s.messageCount > 0);
   }
 
-  /**
-   * Find empty session (for reuse)
-   */
   findEmptySession(): Session | undefined {
-    return store.getState().list.find((s) => s.messageCount === 0);
+    return store.getState().session.list.find((s) => s.messageCount === 0);
   }
 }
 
-// Singleton instance
 let sessionServiceInstance: SessionService | null = null;
 
 export function getSessionService(token?: string): SessionService {

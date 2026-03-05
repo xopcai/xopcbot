@@ -1,8 +1,7 @@
 // ConnectionService - Manages SSE connection and events
-// Extracted from gateway-chat.ts
 
 import { getStore } from '../core/store.js';
-import type { ConnectionState } from '../core/store.js';
+import type { ConnectionStatus } from '../core/store.js';
 
 const store = getStore();
 
@@ -38,31 +37,22 @@ export class ConnectionService {
     this._events = events;
   }
 
-  /**
-   * Check if connection is active
-   */
   get isConnected(): boolean {
-    return store.getState().state === 'connected';
+    return store.getState().connection.status === 'connected';
   }
 
-  /**
-   * Get current connection state
-   */
-  get state(): ConnectionState {
-    return store.getState().state;
+  get status(): ConnectionStatus {
+    return store.getState().connection.status;
   }
 
-  /**
-   * Connect to SSE endpoint
-   */
   connect(): void {
-    if (store.getState().state === 'connecting') {
+    if (store.getState().connection.status === 'connecting') {
       console.log('[ConnectionService] Already connecting');
       return;
     }
 
-    store.getState().setState('connecting');
-    store.getState().setError(null);
+    store.getState().setConnectionStatus('connecting');
+    store.getState().setConnectionError(null);
 
     try {
       const url = new URL('/api/events', this._config.url);
@@ -74,8 +64,8 @@ export class ConnectionService {
 
       this._eventSource.onopen = () => {
         store.getState().resetReconnect();
-        store.getState().setState('connected');
-        store.getState().setError(null);
+        store.getState().setConnectionStatus('connected');
+        store.getState().setConnectionError(null);
         console.log('[ConnectionService] Connected');
       };
 
@@ -88,10 +78,9 @@ export class ConnectionService {
         }
       };
 
-      // Custom events
       this._eventSource.addEventListener('connected', () => {
-        store.getState().setState('connected');
-        store.getState().setError(null);
+        store.getState().setConnectionStatus('connected');
+        store.getState().setConnectionError(null);
       });
 
       this._eventSource.addEventListener('config.reload', (e: MessageEvent) => {
@@ -119,31 +108,25 @@ export class ConnectionService {
         if (this._eventSource?.readyState === EventSource.CLOSED) {
           this._handleDisconnect();
         } else {
-          store.getState().setState('reconnecting');
+          store.getState().setConnectionStatus('reconnecting');
         }
       };
     } catch (err) {
       console.error('[ConnectionService] Failed to connect:', err);
-      store.getState().setState('error');
-      store.getState().setError('Failed to create connection');
+      store.getState().setConnectionStatus('error');
+      store.getState().setConnectionError('Failed to create connection');
       this._events.onError?.('Failed to create connection');
     }
   }
 
-  /**
-   * Disconnect from SSE endpoint
-   */
   disconnect(): void {
     this._shouldReconnect = false;
     this._clearReconnectTimer();
     this._eventSource?.close();
     this._eventSource = undefined;
-    store.getState().setState('disconnected');
+    store.getState().setConnectionStatus('disconnected');
   }
 
-  /**
-   * Reconnect to SSE endpoint
-   */
   reconnect(): void {
     this._shouldReconnect = true;
     store.getState().resetReconnect();
@@ -152,35 +135,34 @@ export class ConnectionService {
   }
 
   private _handleMessage(data: unknown): void {
-    // Handle different message types from SSE
     if (typeof data === 'object' && data !== null) {
       const msg = data as Record<string, unknown>;
       
       if (msg.type === 'error' && typeof msg.message === 'string') {
-        store.getState().setError(msg.message);
+        store.getState().setConnectionError(msg.message);
         this._events.onError?.(msg.message);
       }
     }
   }
 
   private _handleDisconnect(): void {
-    store.getState().setState('disconnected');
+    store.getState().setConnectionStatus('disconnected');
 
     if (!this._shouldReconnect || !this._config.autoReconnect) {
       return;
     }
 
-    const reconnectCount = store.getState().reconnectCount;
+    const reconnectCount = store.getState().connection.reconnectCount;
     if (reconnectCount >= this._config.maxReconnectAttempts) {
       console.error('[ConnectionService] Max reconnection attempts reached');
-      store.getState().setState('error');
-      store.getState().setError('Connection lost - max retries exceeded');
+      store.getState().setConnectionStatus('error');
+      store.getState().setConnectionError('Connection lost - max retries exceeded');
       this._events.onError?.('Connection lost');
       return;
     }
 
     store.getState().incrementReconnect();
-    store.getState().setState('reconnecting');
+    store.getState().setConnectionStatus('reconnecting');
 
     console.log(`[ConnectionService] Reconnecting... (attempt ${reconnectCount + 1})`);
 
@@ -196,16 +178,12 @@ export class ConnectionService {
     }
   }
 
-  /**
-   * Dispose connection service
-   */
   dispose(): void {
     this.disconnect();
     this._events = {};
   }
 }
 
-// Singleton instance
 let connectionServiceInstance: ConnectionService | null = null;
 
 export function getConnectionService(

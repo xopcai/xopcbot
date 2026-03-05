@@ -21,27 +21,27 @@ export interface SessionState {
 }
 
 export interface SessionActions {
-  setCurrent: (session: Session | null) => void;
-  setList: (sessions: Session[]) => void;
+  setCurrentSession: (session: Session | null) => void;
+  setSessionList: (sessions: Session[]) => void;
   addSession: (session: Session) => void;
   updateSession: (key: string, updates: Partial<Session>) => void;
   removeSession: (key: string) => void;
-  setLoading: (loading: boolean) => void;
-  setError: (error: string | null) => void;
+  setSessionLoading: (loading: boolean) => void;
+  setSessionError: (error: string | null) => void;
 }
 
 // ===== Connection Types =====
-export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'error';
+export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'error';
 
-export interface ConnectionStatus {
-  state: ConnectionState;
+export interface ConnectionState {
+  status: ConnectionStatus;
   error: string | null;
   reconnectCount: number;
 }
 
 export interface ConnectionActions {
-  setState: (state: ConnectionState) => void;
-  setError: (error: string | null) => void;
+  setConnectionStatus: (status: ConnectionStatus) => void;
+  setConnectionError: (error: string | null) => void;
   incrementReconnect: () => void;
   resetReconnect: () => void;
 }
@@ -68,29 +68,31 @@ export interface Message {
   };
 }
 
+export interface StreamingState {
+  isActive: boolean;
+  content: string;
+  message: Message | null;
+}
+
 export interface MessageState {
-  list: Message[];
-  streaming: {
-    isActive: boolean;
-    content: string;
-    message: Message | null;
-  };
+  messages: Message[];
+  streaming: StreamingState;
   loading: boolean;
   error: string | null;
 }
 
 export interface MessageActions {
-  setList: (messages: Message[]) => void;
+  setMessages: (messages: Message[]) => void;
   addMessage: (message: Message) => void;
   updateMessage: (id: string, updates: Partial<Message>) => void;
   removeMessage: (id: string) => void;
   clearMessages: () => void;
-  setStreaming: (isActive: boolean) => void;
+  setStreamingActive: (isActive: boolean) => void;
   setStreamingContent: (content: string) => void;
   appendStreamingContent: (content: string) => void;
   finalizeStreaming: () => void;
-  setLoading: (loading: boolean) => void;
-  setError: (error: string | null) => void;
+  setMessageLoading: (loading: boolean) => void;
+  setMessageError: (error: string | null) => void;
 }
 
 // ===== Route Types =====
@@ -108,22 +110,19 @@ export interface RouteState {
 }
 
 export interface RouteActions {
-  navigate: (route: ChatRoute) => void;
-  setTransitioning: (transitioning: boolean) => void;
+  navigateRoute: (route: ChatRoute) => void;
+  setRouteTransitioning: (transitioning: boolean) => void;
 }
 
 // ===== App State =====
-export interface AppState extends
-  SessionState,
-  ConnectionStatus,
-  MessageState,
-  RouteState {}
+export interface AppState {
+  session: SessionState;
+  connection: ConnectionState;
+  message: MessageState;
+  route: RouteState;
+}
 
-export interface AppActions extends
-  SessionActions,
-  ConnectionActions,
-  MessageActions,
-  RouteActions {}
+export type AppActions = SessionActions & ConnectionActions & MessageActions & RouteActions;
 
 // ===== Store Creation =====
 function generateId(): string {
@@ -133,110 +132,222 @@ function generateId(): string {
 export const createAppStore = () =>
   createStore(
     subscribeWithSelector<AppState & AppActions>((set, get) => ({
-      // Initial State
-      current: null,
-      list: [],
-      loading: false,
-      error: null,
-      state: 'disconnected',
-      reconnectCount: 0,
-      list: [],
-      streaming: {
-        isActive: false,
-        content: '',
-        message: null,
+      // ===== Session State =====
+      session: {
+        current: null,
+        list: [],
+        loading: false,
+        error: null,
       },
-      current: { type: 'recent' },
-      previous: null,
-      transitioning: false,
 
-      // Session Actions
-      setCurrent: (session) => set({ current: session }),
-      setList: (sessions) => set({ list: sessions }),
+      // ===== Connection State =====
+      connection: {
+        status: 'disconnected',
+        error: null,
+        reconnectCount: 0,
+      },
+
+      // ===== Message State =====
+      message: {
+        messages: [],
+        streaming: {
+          isActive: false,
+          content: '',
+          message: null,
+        },
+        loading: false,
+        error: null,
+      },
+
+      // ===== Route State =====
+      route: {
+        current: { type: 'recent' },
+        previous: null,
+        transitioning: false,
+      },
+
+      // ===== Session Actions =====
+      setCurrentSession: (session) =>
+        set((state) => ({
+          session: { ...state.session, current: session },
+        })),
+
+      setSessionList: (sessions) =>
+        set((state) => ({
+          session: { ...state.session, list: sessions },
+        })),
+
       addSession: (session) =>
         set((state) => ({
-          list: [session, ...state.list],
-        })),
-      updateSession: (key, updates) =>
-        set((state) => ({
-          list: state.list.map((s) =>
-            s.key === key ? { ...s, ...updates } : s
-          ),
-        })),
-      removeSession: (key) =>
-        set((state) => ({
-          list: state.list.filter((s) => s.key !== key),
-        })),
-      setLoading: (loading) => set({ loading }),
-      setError: (error) => set({ error }),
-
-      // Connection Actions
-      setState: (state) => set({ state }),
-      setError: (error) => set({ error }),
-      incrementReconnect: () =>
-        set((state) => ({ reconnectCount: state.reconnectCount + 1 })),
-      resetReconnect: () => set({ reconnectCount: 0 }),
-
-      // Message Actions
-      setList: (messages) => set({ list: messages }),
-      addMessage: (message) =>
-        set((state) => ({
-          list: [...state.list, message],
-        })),
-      updateMessage: (id, updates) =>
-        set((state) => ({
-          list: state.list.map((m) =>
-            m.id === id ? { ...m, ...updates } : m
-          ),
-        })),
-      removeMessage: (id) =>
-        set((state) => ({
-          list: state.list.filter((m) => m.id !== id),
-        })),
-      clearMessages: () =>
-        set({
-          list: [],
-          streaming: { isActive: false, content: '', message: null },
-        }),
-      setStreaming: (isActive) =>
-        set((state) => ({
-          streaming: { ...state.streaming, isActive },
-        })),
-      setStreamingContent: (content) =>
-        set((state) => ({
-          streaming: { ...state.streaming, content },
-        })),
-      appendStreamingContent: (content) =>
-        set((state) => ({
-          streaming: {
-            ...state.streaming,
-            content: state.streaming.content + content,
+          session: {
+            ...state.session,
+            list: [session, ...state.session.list],
           },
         })),
+
+      updateSession: (key, updates) =>
+        set((state) => ({
+          session: {
+            ...state.session,
+            list: state.session.list.map((s) =>
+              s.key === key ? { ...s, ...updates } : s
+            ),
+          },
+        })),
+
+      removeSession: (key) =>
+        set((state) => ({
+          session: {
+            ...state.session,
+            list: state.session.list.filter((s) => s.key !== key),
+          },
+        })),
+
+      setSessionLoading: (loading) =>
+        set((state) => ({
+          session: { ...state.session, loading },
+        })),
+
+      setSessionError: (error) =>
+        set((state) => ({
+          session: { ...state.session, error },
+        })),
+
+      // ===== Connection Actions =====
+      setConnectionStatus: (status) =>
+        set((state) => ({
+          connection: { ...state.connection, status },
+        })),
+
+      setConnectionError: (error) =>
+        set((state) => ({
+          connection: { ...state.connection, error },
+        })),
+
+      incrementReconnect: () =>
+        set((state) => ({
+          connection: {
+            ...state.connection,
+            reconnectCount: state.connection.reconnectCount + 1,
+          },
+        })),
+
+      resetReconnect: () =>
+        set((state) => ({
+          connection: { ...state.connection, reconnectCount: 0 },
+        })),
+
+      // ===== Message Actions =====
+      setMessages: (messages) =>
+        set((state) => ({
+          message: { ...state.message, messages },
+        })),
+
+      addMessage: (message) =>
+        set((state) => ({
+          message: {
+            ...state.message,
+            messages: [...state.message.messages, message],
+          },
+        })),
+
+      updateMessage: (id, updates) =>
+        set((state) => ({
+          message: {
+            ...state.message,
+            messages: state.message.messages.map((m) =>
+              m.id === id ? { ...m, ...updates } : m
+            ),
+          },
+        })),
+
+      removeMessage: (id) =>
+        set((state) => ({
+          message: {
+            ...state.message,
+            messages: state.message.messages.filter((m) => m.id !== id),
+          },
+        })),
+
+      clearMessages: () =>
+        set((state) => ({
+          message: {
+            ...state.message,
+            messages: [],
+            streaming: { isActive: false, content: '', message: null },
+          },
+        })),
+
+      setStreamingActive: (isActive) =>
+        set((state) => ({
+          message: {
+            ...state.message,
+            streaming: { ...state.message.streaming, isActive },
+          },
+        })),
+
+      setStreamingContent: (content) =>
+        set((state) => ({
+          message: {
+            ...state.message,
+            streaming: { ...state.message.streaming, content },
+          },
+        })),
+
+      appendStreamingContent: (content) =>
+        set((state) => ({
+          message: {
+            ...state.message,
+            streaming: {
+              ...state.message.streaming,
+              content: state.message.streaming.content + content,
+            },
+          },
+        })),
+
       finalizeStreaming: () => {
-        const { streaming, list } = get();
-        if (streaming.content) {
-          const message: Message = {
+        const { message } = get();
+        if (message.streaming.content) {
+          const newMessage: Message = {
             id: generateId(),
             role: 'assistant',
-            content: [{ type: 'text', text: streaming.content }],
+            content: [{ type: 'text', text: message.streaming.content }],
             timestamp: Date.now(),
           };
-          set({
-            list: [...list, message],
-            streaming: { isActive: false, content: '', message: null },
-          });
+          set((state) => ({
+            message: {
+              ...state.message,
+              messages: [...state.message.messages, newMessage],
+              streaming: { isActive: false, content: '', message: null },
+            },
+          ));
         }
       },
 
-      // Route Actions
-      navigate: (route) =>
+      setMessageLoading: (loading) =>
         set((state) => ({
-          previous: state.current,
-          current: route,
-          transitioning: true,
+          message: { ...state.message, loading },
         })),
-      setTransitioning: (transitioning) => set({ transitioning }),
+
+      setMessageError: (error) =>
+        set((state) => ({
+          message: { ...state.message, error },
+        })),
+
+      // ===== Route Actions =====
+      navigateRoute: (route) =>
+        set((state) => ({
+          route: {
+            previous: state.route.current,
+            current: route,
+            transitioning: true,
+          },
+        })),
+
+      setRouteTransitioning: (transitioning) =>
+        set((state) => ({
+          route: { ...state.route, transitioning },
+        })),
     }))
   );
 
@@ -255,38 +366,39 @@ export function resetStore(): void {
 }
 
 // Selector helpers for better performance
-export function selectSession(store: ReturnType<typeof createAppStore>) {
-  return {
-    current: store.getState().current,
-    list: store.getState().list,
-    loading: store.getState().loading,
-    error: store.getState().error,
-  };
+export function selectSession(store: ReturnType<typeof createAppStore>): SessionState {
+  return store.getState().session;
 }
 
-export function selectConnection(store: ReturnType<typeof createAppStore>) {
-  return {
-    state: store.getState().state,
-    error: store.getState().error,
-    reconnectCount: store.getState().reconnectCount,
-  };
+export function selectConnection(store: ReturnType<typeof createAppStore>): ConnectionState {
+  return store.getState().connection;
 }
 
-export function selectMessages(store: ReturnType<typeof createAppStore>) {
-  return {
-    list: store.getState().list,
-    streaming: store.getState().streaming,
-    loading: store.getState().loading,
-    error: store.getState().error,
-  };
+export function selectMessages(store: ReturnType<typeof createAppStore>): MessageState {
+  return store.getState().message;
 }
 
-export function selectRoute(store: ReturnType<typeof createAppStore>) {
-  return {
-    current: store.getState().current,
-    previous: store.getState().previous,
-    transitioning: store.getState().transitioning,
-  };
+export function selectRoute(store: ReturnType<typeof createAppStore>): RouteState {
+  return store.getState().route;
 }
 
-export type { AppStore } from 'zustand';
+// Shorthand selectors for common access
+export function selectCurrentSession(store: ReturnType<typeof createAppStore>) {
+  return store.getState().session.current;
+}
+
+export function selectSessionList(store: ReturnType<typeof createAppStore>) {
+  return store.getState().session.list;
+}
+
+export function selectConnectionStatus(store: ReturnType<typeof createAppStore>) {
+  return store.getState().connection.status;
+}
+
+export function selectIsStreaming(store: ReturnType<typeof createAppStore>) {
+  return store.getState().message.streaming.isActive;
+}
+
+export function selectCurrentRoute(store: ReturnType<typeof createAppStore>) {
+  return store.getState().route.current;
+}

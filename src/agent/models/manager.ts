@@ -231,20 +231,33 @@ export class ModelManager {
       } catch (err) {
         lastError = err;
 
+        // Enhanced error logging
+        const errorDetails = {
+          attempt: i + 1,
+          provider: candidate.provider,
+          model: candidate.model,
+          errorMessage: err instanceof Error ? err.message : String(err),
+          errorName: err instanceof Error ? err.name : 'Unknown',
+          errorStack: err instanceof Error ? err.stack : undefined,
+          isTimeout: err instanceof Error && err.message.includes('timed out'),
+          isAbort: err instanceof DOMException && err.name === 'AbortError',
+        };
+
         // Don't fallback on user abort
         if (err instanceof DOMException && err.name === 'AbortError') {
+          log.info(errorDetails, 'User aborted model call');
           throw err;
         }
 
         if (isFailoverError(err)) {
           const described = describeFailoverError(err);
           log.warn(
-            { provider: candidate.provider, model: candidate.model, ...described },
+            { ...errorDetails, ...described },
             'Model call failed, trying fallback'
           );
         } else {
           log.warn(
-            { provider: candidate.provider, model: candidate.model, error: err },
+            errorDetails,
             'Model call failed with non-failover error'
           );
         }
@@ -256,6 +269,12 @@ export class ModelManager {
 
     // All models failed
     if (lastError) {
+      log.error({
+        lastError: lastError instanceof Error ? lastError.message : String(lastError),
+        lastErrorStack: lastError instanceof Error ? lastError.stack : undefined,
+        attemptedCandidates: candidates.length,
+        sessionKey,
+      }, 'All model candidates failed');
       throw lastError;
     }
 

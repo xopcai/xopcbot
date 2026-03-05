@@ -699,10 +699,25 @@ export class AgentService {
       await this.hookHandler.trigger('agent_end', { messages: this.agent.state.messages, success: true, durationMs: 0 });
     } catch (error) {
       // Handle errors during message processing - notify user
-      log.error({ err: error, sessionKey, channel: msg.channel, chatId: msg.chat_id }, 'Error processing message');
-
       const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      
+      // Enhanced error logging for debugging
+      log.error({ 
+        err: error, 
+        errorMessage,
+        errorStack,
+        sessionKey, 
+        channel: msg.channel, 
+        chatId: msg.chat_id,
+        model: this.modelManager.getCurrentModel(),
+        provider: this.modelManager.getCurrentProvider(),
+        messageLength: msg.content?.length,
+        hasAttachments: !!msg.attachments?.length,
+      }, 'Error processing message - detailed diagnostics');
+
       let userMessage = '❌ An error occurred while processing your message.';
+      let shouldShowDetails = false;
 
       // Provide more specific error messages
       if (errorMessage.includes('timeout') || errorMessage.includes('ETIMEDOUT')) {
@@ -713,6 +728,15 @@ export class AgentService {
         userMessage = '❌ Context too long. Starting a new session might help.';
       } else if (errorMessage.includes('API key') || errorMessage.includes('unauthorized')) {
         userMessage = '❌ API authentication failed. Please check configuration.';
+      } else if (errorMessage.includes('network') || errorMessage.includes('ECONNREFUSED')) {
+        userMessage = '❌ Network error. Please check your connection.';
+      } else if (errorMessage.includes('JSON') || errorMessage.includes('parse')) {
+        userMessage = '❌ Invalid response from AI model. Please try again.';
+      } else {
+        // Unknown error - show partial details for debugging
+        const shortError = errorMessage.length > 100 ? errorMessage.substring(0, 100) + '...' : errorMessage;
+        userMessage = `❌ An error occurred while processing your message.\n\nError: ${shortError}\n\nIf this persists, try /new to start a fresh session.`;
+        shouldShowDetails = true;
       }
 
       await this.bus.publishOutbound({
@@ -722,7 +746,13 @@ export class AgentService {
         type: 'message',
       });
 
-      await this.hookHandler.trigger('agent_end', { messages: this.agent.state.messages, success: false, durationMs: 0, error: errorMessage });
+      await this.hookHandler.trigger('agent_end', { 
+        messages: this.agent.state.messages, 
+        success: false, 
+        durationMs: 0, 
+        error: errorMessage,
+        errorDetails: shouldShowDetails ? errorStack : undefined,
+      });
     } finally {
       typing.stop();
       // End stream and cleanup progress feedback

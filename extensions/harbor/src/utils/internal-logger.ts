@@ -7,6 +7,7 @@
 
 export interface LogContext {
   [key: string]: unknown;
+  err?: Error | unknown;
 }
 
 export interface Logger {
@@ -16,32 +17,81 @@ export interface Logger {
   error: (data: LogContext | string, message?: string) => void;
 }
 
-export function createLogger(prefix: string): Logger {
-  const formatContext = (data: LogContext | string): string => {
-    if (typeof data === 'string') {
-      return data;
+/**
+ * Format log context into a consistent string representation
+ */
+function formatContext(data: LogContext | string): string {
+  if (typeof data === 'string') {
+    return data;
+  }
+  
+  const entries: string[] = [];
+  
+  // Handle error specially
+  if (data.err) {
+    const err = data.err as Error;
+    entries.push(`error=${err.message}`);
+    if (err.stack) {
+      entries.push(`stack=${err.stack.split('\n')[1]?.trim()}`);
     }
-    const entries = Object.entries(data)
-      .map(([k, v]) => `${k}=${typeof v === 'object' ? JSON.stringify(v) : v}`)
-      .join(' ');
-    return entries ? `[${entries}]` : '';
-  };
+  }
+  
+  // Handle other fields
+  for (const [k, v] of Object.entries(data)) {
+    if (k === 'err') continue;
+    
+    let formatted: string;
+    if (v === null || v === undefined) {
+      formatted = 'null';
+    } else if (typeof v === 'object') {
+      formatted = JSON.stringify(v);
+    } else {
+      formatted = String(v);
+    }
+    
+    // Truncate long values
+    if (formatted.length > 100) {
+      formatted = formatted.slice(0, 97) + '...';
+    }
+    
+    entries.push(`${k}=${formatted}`);
+  }
+  
+  return entries.length > 0 ? `[${entries.join(' ')}]` : '';
+}
+
+/**
+ * Get ISO timestamp for logging
+ */
+function getTimestamp(): string {
+  return new Date().toISOString();
+}
+
+export function createLogger(prefix: string): Logger {
+  const logPrefix = `[Harbor:${prefix}]`;
+  const isDebugEnabled = process.env.DEBUG === 'true' || process.env.DEBUG?.includes('harbor');
 
   return {
     debug: (data, message) => {
-      const ctx = process.env.DEBUG ? formatContext(data) : '';
-      if (ctx || message) {
-        console.debug(`[Harbor:${prefix}] ${ctx} ${message || data}`);
-      }
+      if (!isDebugEnabled) return;
+      const timestamp = getTimestamp();
+      const ctx = formatContext(data);
+      console.debug(`${timestamp} ${logPrefix} [DEBUG] ${ctx} ${message || ''}`.trim());
     },
     info: (data, message) => {
-      console.info(`[Harbor:${prefix}] ${formatContext(data)} ${message || ''}`);
+      const timestamp = getTimestamp();
+      const ctx = formatContext(data);
+      console.info(`${timestamp} ${logPrefix} [INFO]  ${ctx} ${message || ''}`.trim());
     },
     warn: (data, message) => {
-      console.warn(`[Harbor:${prefix}] ${formatContext(data)} ${message || ''}`);
+      const timestamp = getTimestamp();
+      const ctx = formatContext(data);
+      console.warn(`${timestamp} ${logPrefix} [WARN]  ${ctx} ${message || ''}`.trim());
     },
     error: (data, message) => {
-      console.error(`[Harbor:${prefix}] ${formatContext(data)} ${message || ''}`);
+      const timestamp = getTimestamp();
+      const ctx = formatContext(data);
+      console.error(`${timestamp} ${logPrefix} [ERROR] ${ctx} ${message || ''}`.trim());
     },
   };
 }

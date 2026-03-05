@@ -5,8 +5,8 @@
  * Persists state to workspace for durability.
  */
 
-import { existsSync, readFileSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { join, dirname } from 'path';
 import { createLogger } from '../utils/internal-logger.js';
 import type { HarborRunOptions, HarborRunResult } from '../utils/harbor-cli.js';
 
@@ -207,9 +207,14 @@ export class RunTracker {
   private save(): void {
     try {
       const data = Object.fromEntries(this.runs);
+      // Ensure directory exists
+      const dir = dirname(this.stateFile);
+      if (!existsSync(dir)) {
+        mkdirSync(dir, { recursive: true });
+      }
       writeFileSync(this.stateFile, JSON.stringify(data, null, 2), 'utf-8');
     } catch (error) {
-      log.error({ err: error }, 'Failed to save run tracker state');
+      log.debug({ err: error }, 'Failed to save run tracker state (non-fatal)');
     }
   }
 }

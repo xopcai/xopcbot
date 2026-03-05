@@ -11,6 +11,10 @@ import { createLogger } from './internal-logger.js';
 
 const execAsync = promisify(exec);
 
+// Timeout configuration
+const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes for most operations
+const LONG_TIMEOUT_MS = 30 * 60 * 1000;   // 30 minutes for long-running evaluations
+
 const log = createLogger('HarborCli');
 
 // Retry configuration constants
@@ -107,6 +111,7 @@ export interface HarborRetryOptions {
   maxRetries?: number;
   retryDelayMs?: number;
   retryableErrors?: string[];
+  timeoutMs?: number;
 }
 
 export class HarborCli {
@@ -144,34 +149,45 @@ export class HarborCli {
   }
 
   /**
-   * Execute operation with retry logic
+   * Execute operation with retry logic and timeout
    */
   private async execWithRetry<T>(
     operation: () => Promise<T>,
     options: HarborRetryOptions = {},
     context: string = 'Harbor operation'
   ): Promise<T> {
-    const { maxRetries = 3, retryDelayMs = 2000, retryableErrors = [] } = options;
+    const { 
+      maxRetries = DEFAULT_MAX_RETRIES, 
+      retryDelayMs = DEFAULT_RETRY_DELAY_MS, 
+      retryableErrors = [],
+      timeoutMs = DEFAULT_TIMEOUT_MS,
+    } = options;
 
     let lastError: Error;
     const categorizedErrors: Array<{ attempt: number; error: string; type: string }> = [];
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        return await operation();
+        // Wrap operation with timeout
+        return await Promise.race([
+          operation(),
+          new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error(`Operation timeout after ${timeoutMs / 1000}s`)), timeoutMs)
+          ),
+        ]);
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
         const { type, retryable } = this.categorizeError(lastError);
 
+        const isTimeout = lastError.message.includes('timeout');
         categorizedErrors.push({
           attempt,
           error: lastError.message.slice(0, 200),
-          type,
+          type: isTimeout ? 'TIMEOUT' : type,
         });
 
-        // Check if error is retryable
-        const isRetryable =
-          retryable || retryableErrors.some((e) => lastError.message.includes(e));
+        // Check if error is retryable (timeouts are retryable)
+        const isRetryable = retryable || isTimeout || retryableErrors.some((e) => lastError.message.includes(e));
 
         if (!isRetryable || attempt === maxRetries) {
           log.error(
@@ -184,8 +200,8 @@ export class HarborCli {
           );
           throw new HarborError(
             lastError.message,
-            type,
-            false // Already exhausted retries
+            isTimeout ? HarborErrorType.TIMEOUT : type,
+            false
           );
         }
 
@@ -261,13 +277,14 @@ export class HarborCli {
     }
 
     const command = `${this.pythonPath} -m harbor ${args.join(' ')}`;
-    log.info({ command, options }, 'Running Harbor benchmark');
+    log.info({ command, dataset: options.dataset }, 'Running Harbor benchmark');
 
+    // Use long timeout for benchmark runs (they can take a while)
     return this.execWithRetry(
       async () => {
         const { stdout, stderr } = await execAsync(command);
         if (stderr) {
-          log.warn({ stderr }, 'Harbor CLI produced stderr output');
+          log.warn({ stderr: stderr.slice(0, 200) }, 'Harbor CLI produced stderr output');
         }
         return this.parseRunResult(stdout, options);
       },
@@ -275,6 +292,7 @@ export class HarborCli {
         maxRetries: DEFAULT_MAX_RETRIES,
         retryDelayMs: LONG_RETRY_DELAY_MS,
         retryableErrors: ['timeout', 'container failed', 'connection refused'],
+        timeoutMs: LONG_TIMEOUT_MS,
       },
       `harbor run --dataset ${options.dataset}`
     );

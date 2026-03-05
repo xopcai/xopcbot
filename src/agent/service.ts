@@ -443,11 +443,15 @@ export class AgentService {
   private async handleUserMessage(msg: InboundMessage): Promise<void> {
     // Use sessionKey from metadata if available (for channels with custom session key format like Telegram)
     const sessionKey = (msg.metadata?.sessionKey as string) || `${msg.channel}:${msg.chat_id}`;
+    const processStartTime = Date.now();
+    const processingSteps: string[] = [];
+    
     log.info({ channel: msg.channel, senderId: msg.sender_id, sessionKey }, 'Processing message');
 
     // Apply model for session
     await this.modelManager.applyModelForSession(this.agent, sessionKey);
     this.sessionTracker.touchSession(sessionKey);
+    processingSteps.push('model_applied');
 
     const typing = createTypingController({
       onStart: async () => {
@@ -546,6 +550,8 @@ export class AgentService {
 
       // Process message
       const expandedContent = this.expandSkillCommand(msg.content);
+      processingSteps.push('skill_expanded');
+      
       await this.hookHandler.trigger('before_agent_start', { prompt: expandedContent });
 
       // 🆕 Phase 1: Input Hook - Intercept/transform user input
@@ -566,6 +572,7 @@ export class AgentService {
 
       // If handled by input hook, skip AI processing
       if (inputResult.skipAgent) {
+        processingSteps.push('input_hook_handled');
         if (inputResult.response) {
           await this.bus.publishOutbound({
             channel: msg.channel,
@@ -576,19 +583,28 @@ export class AgentService {
         }
         return;
       }
+      processingSteps.push('input_hook_passed');
 
       // Use transformed content
       const processedContent = inputResult.text;
 
       let messages = await this.sessionStore.load(sessionKey);
+      processingSteps.push('session_loaded');
+      
       await this.checkAndCompact(sessionKey, messages);
+      processingSteps.push('compaction_checked');
+      
       messages = await this.sessionStore.load(sessionKey);
       this.agent.replaceMessages(messages);
+      processingSteps.push('messages_replaced');
 
       // 🆕 Phase 1: Context Hook - Modify messages before sending to LLM
       const contextResult = await this.hookHandler.runContextHook(this.agent.state.messages);
+      processingSteps.push('context_hook_ran');
+      
       if (contextResult.modified) {
         this.agent.replaceMessages(contextResult.messages);
+        processingSteps.push('context_modified');
       }
 
       // Build message content with text and attachments
@@ -630,14 +646,16 @@ export class AgentService {
         turnIndex,
         timestamp: Date.now(),
       });
+      processingSteps.push('turn_start_hook');
 
       // Run with fallback
       const currentProvider = this.modelManager.getCurrentProvider();
       const currentModel = this.modelManager.getCurrentModel();
       log.info(
-        { sessionKey, provider: currentProvider, model: currentModel },
+        { sessionKey, provider: currentProvider, model: currentModel, messageContentLength: messageContent.length },
         'Calling LLM'
       );
+      processingSteps.push('llm_call_started');
 
       const result = await this.modelManager.runWithFallback(
         this.agent,
@@ -646,6 +664,7 @@ export class AgentService {
         currentProvider,
         currentModel
       );
+      processingSteps.push('llm_call_completed');
 
       // 🆕 Phase 1: Turn End Hook
       await this.hookHandler.trigger('turn_end', {
@@ -656,6 +675,7 @@ export class AgentService {
         },
         timestamp: Date.now(),
       });
+      processingSteps.push('turn_end_hook');
 
       // Track usage
       if (result.usage) {
@@ -665,6 +685,7 @@ export class AgentService {
           total: result.usage.total_tokens,
         });
       }
+      processingSteps.push('usage_tracked');
 
       // Send response
       if (result.content) {
@@ -676,6 +697,8 @@ export class AgentService {
 
         // Run message_sending hook for extension interception
         const hookResult = await this.hookHandler.runMessageSending(msg.chat_id, contentWithUsage);
+        processingSteps.push('message_sending_hook');
+        
         if (!hookResult.send) {
           log.info({ chatId: msg.chat_id, reason: hookResult.reason }, 'Message sending blocked by hook');
         } else {
@@ -691,16 +714,20 @@ export class AgentService {
             type: 'message',
             tts: useTTS || undefined,
           });
+          processingSteps.push('message_sent');
           await this.hookHandler.trigger('message_sent', { to: msg.chat_id, content: hookResult.content || contentWithUsage, success: true });
         }
       }
 
       await this.sessionStore.save(sessionKey, this.agent.state.messages);
-      await this.hookHandler.trigger('agent_end', { messages: this.agent.state.messages, success: true, durationMs: 0 });
+      processingSteps.push('session_saved');
+      
+      await this.hookHandler.trigger('agent_end', { messages: this.agent.state.messages, success: true, durationMs: Date.now() - processStartTime });
     } catch (error) {
       // Handle errors during message processing - notify user
       const errorMessage = error instanceof Error ? error.message : String(error);
       const errorStack = error instanceof Error ? error.stack : undefined;
+      const processDuration = Date.now() - processStartTime;
       
       // Enhanced error logging for debugging
       log.error({ 
@@ -710,10 +737,14 @@ export class AgentService {
         sessionKey, 
         channel: msg.channel, 
         chatId: msg.chat_id,
-        model: this.modelManager.getCurrentModel(),
-        provider: this.modelManager.getCurrentProvider(),
+        messageContent: msg.content?.substring(0, 200), // First 200 chars
         messageLength: msg.content?.length,
         hasAttachments: !!msg.attachments?.length,
+        model: this.modelManager.getCurrentModel(),
+        provider: this.modelManager.getCurrentProvider(),
+        processDurationMs: processDuration,
+        processingSteps: processingSteps,
+        messageHistoryLength: this.agent.state.messages.length,
       }, 'Error processing message - detailed diagnostics');
 
       let userMessage = '❌ An error occurred while processing your message.';
@@ -735,7 +766,7 @@ export class AgentService {
       } else {
         // Unknown error - show partial details for debugging
         const shortError = errorMessage.length > 100 ? errorMessage.substring(0, 100) + '...' : errorMessage;
-        userMessage = `❌ An error occurred while processing your message.\n\nError: ${shortError}\n\nIf this persists, try /new to start a fresh session.`;
+        userMessage = `❌ An error occurred while processing your message.\n\nError: ${shortError}\nDuration: ${processDuration}ms\nSteps: ${processingSteps.join(' -> ')}\n\nIf this persists, try /new to start a fresh session.`;
         shouldShowDetails = true;
       }
 
@@ -749,7 +780,7 @@ export class AgentService {
       await this.hookHandler.trigger('agent_end', { 
         messages: this.agent.state.messages, 
         success: false, 
-        durationMs: 0, 
+        durationMs: processDuration, 
         error: errorMessage,
         errorDetails: shouldShowDetails ? errorStack : undefined,
       });

@@ -202,14 +202,16 @@ export function parseInline(text: string, options: ParseOptions = {}): MarkdownN
   void _remaining; // Reserved for future use
 
   // Patterns for inline elements (order matters - longer patterns first)
+  // Note: We use different strategies for different patterns
+  // Bold uses a special pattern that allows single * inside
   const patterns: Array<{ regex: RegExp; type: MarkdownNodeType; process?: (match: RegExpExecArray) => Partial<MarkdownNode> }> = [
     // Spoilers (Telegram-specific ||text||)
     { regex: /\|\|([^|]+)\|\|/g, type: 'spoiler' },
-    // Bold (**text**)
-    { regex: /\*\*([^*]+)\*\*/g, type: 'bold' },
+    // Bold (**text**) - allows single * inside for nested italic
+    { regex: /\*\*([^*]*(?:\*[^*][^*]*)*)\*\*/g, type: 'bold' },
     // Strikethrough (~~text~~)
     { regex: /~~([^~]+)~~/g, type: 'strikethrough' },
-    // Italic (*text* or _text_)
+    // Italic (*text* or _text_) - use negative lookbehind/lookahead
     { regex: /(?<![*_])\*([^*]+)\*(?![*_])|(?<![*_])_([^_]+)_(?![*_])/g, type: 'italic' },
     // Inline code (`code`)
     { regex: /`([^`]+)`/g, type: 'code' },
@@ -268,11 +270,32 @@ export function parseInline(text: string, options: ParseOptions = {}): MarkdownN
       const regex = new RegExp(pattern.regex.source, 'g');
       let match;
       while ((match = regex.exec(str)) !== null) {
+        let fullMatch = match[0];
+        let content = match[1] || match[2] || ''; // Handle alternate groups for italic
+
+        // Special handling for bold: extend match if content has unpaired * that could form italic
+        if (pattern.type === 'bold') {
+          const starCount = (content.match(/\*/g) || []).length;
+          if (starCount % 2 === 1) {
+            const endPos = match.index + fullMatch.length;
+            if (str[endPos] === '*') {
+              const extendedContent = content + '*';
+              // Verify this forms a valid italic pattern
+              const italicRegex = /\*([^*]+)\*/;
+              if (italicRegex.test(extendedContent)) {
+                fullMatch = fullMatch + '*';
+                content = extendedContent;
+                regex.lastIndex = endPos + 1;
+              }
+            }
+          }
+        }
+
         allMatches.push({
           index: match.index,
-          length: match[0].length,
+          length: fullMatch.length,
           type: pattern.type,
-          content: match[1] || match[2] || '', // Handle alternate groups for italic
+          content: content,
           href: pattern.process?.(match).href,
         });
       }

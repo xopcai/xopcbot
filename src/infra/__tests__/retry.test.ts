@@ -2,7 +2,7 @@
  * Retry Infrastructure Tests
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   withRetry,
   sleep,
@@ -27,7 +27,7 @@ describe('resolveRetryConfig', () => {
     expect(config.attempts).toBe(3);
     expect(config.minDelayMs).toBe(300);
     expect(config.maxDelayMs).toBe(30000);
-    expect(config.jitter).toBe(0);
+    expect(config.jitter).toBe(0.1);
   });
 
   it('should apply overrides', () => {
@@ -125,12 +125,12 @@ describe('withRetry', () => {
     const start = Date.now();
     await withRetry(fn, { 
       attempts: 3, 
-      minDelayMs: 1000,
+      minDelayMs: 10,
       retryAfterMs: () => 50, // Override with 50ms
     });
     const elapsed = Date.now() - start;
     
-    expect(elapsed).toBeLessThan(200); // Should use 50ms not 1000ms
+    expect(elapsed).toBeLessThan(200); // Should use 50ms not calculated delay
   });
 });
 

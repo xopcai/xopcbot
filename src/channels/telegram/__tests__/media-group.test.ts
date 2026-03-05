@@ -2,14 +2,16 @@
  * Media Group Buffer Tests
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { MediaGroupBuffer } from '../media-group.js';
 
 describe('MediaGroupBuffer', () => {
   let flushedMessages: any[] = [];
   let buffer: MediaGroupBuffer;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    // Ensure all async operations from previous tests complete
+    await new Promise(resolve => setTimeout(resolve, 10));
     flushedMessages = [];
     buffer = new MediaGroupBuffer({
       timeoutMs: 100,
@@ -17,6 +19,11 @@ describe('MediaGroupBuffer', () => {
         flushedMessages.push(messages);
       }
     });
+  });
+
+  afterEach(() => {
+    // Clean up any pending timers
+    buffer.clear();
   });
 
   it('should buffer media group messages', async () => {

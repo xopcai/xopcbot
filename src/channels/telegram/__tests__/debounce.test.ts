@@ -2,14 +2,16 @@
  * Inbound Debounce Tests
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { InboundDebounce, buildTelegramDebounceKey } from '../debounce.js';
 
 describe('InboundDebounce', () => {
   let flushedItems: any[][] = [];
   let debounce: InboundDebounce<{ id: number; chatId: number; senderId: number }>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    // Ensure all async operations from previous tests complete
+    await new Promise(resolve => setTimeout(resolve, 10));
     flushedItems = [];
     debounce = new InboundDebounce({
       debounceMs: 100,
@@ -18,6 +20,11 @@ describe('InboundDebounce', () => {
         flushedItems.push(items);
       }
     });
+  });
+
+  afterEach(() => {
+    // Clean up any pending timers
+    debounce.clear();
   });
 
   it('should debounce items with same key', async () => {
@@ -91,7 +98,7 @@ describe('InboundDebounce', () => {
     const errors: any[] = [];
     const errorDebounce = new InboundDebounce({
       debounceMs: 100,
-      buildKey: (item) => 'key',
+      buildKey: (_item) => 'key',
       onFlush: async () => {
         throw new Error('Test error');
       },

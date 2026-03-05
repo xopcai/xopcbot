@@ -136,6 +136,7 @@ export class InboundDebounce<T> {
     for (const entry of this.buffers.values()) {
       if (entry.timer) {
         clearTimeout(entry.timer);
+        entry.timer = null;
       }
     }
     this.buffers.clear();

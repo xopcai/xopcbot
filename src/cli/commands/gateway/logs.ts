@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { createLogger } from '../../../utils/logger.js';
 import { getContextWithOpts } from '../../index.js';
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
 
 const _log = createLogger('GatewayLogsCommand');
 
@@ -34,7 +34,6 @@ export function createLogsCommand(): Command {
           });
         } else {
           // Static mode: read last N lines
-          const { execSync } = await import('child_process');
           const output = execSync(
             `tail -n ${options.lines} ${logDir}/app.log 2>/dev/null || echo "No logs found"`,
             { encoding: 'utf-8' }

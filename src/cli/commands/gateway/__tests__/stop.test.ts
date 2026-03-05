@@ -1,8 +1,16 @@
+// Mock os.homedir for consistent paths across environments
+vi.mock("os", () => ({
+  homedir: () => "/root",
+}));
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createStopCommand } from '../stop.js';
 import { loadConfig } from '../../../../config/index.js';
 import { acquireGatewayLock } from '../../../../gateway/lock.js';
 import { forceFreePortAndWait, listPortListeners } from '../../../../gateway/ports.js';
+
+// Set consistent HOME for tests
+process.env.HOME = '/root';
 
 // Mock dependencies
 vi.mock('../../../../config/index.js', () => ({

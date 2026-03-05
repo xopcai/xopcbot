@@ -391,7 +391,7 @@ export async function getLogsByContext(
 /**
  * Get available log levels from actual log data
  */
-export async function getLogLevels(): Promise<LogLevel[]> {
+export async function getLogLevelsFromData(): Promise<LogLevel[]> {
   const levels = new Set<LogLevel>();
   const files = getLogFiles().slice(0, 3); // Check last 3 files
 
@@ -517,6 +517,19 @@ export function cleanBySize(maxTotalMB: number = 500): {
   }
 
   return { deleted, freedBytes, errors };
+}
+
+// ============================================
+// Log Levels
+// ============================================
+
+const LOG_LEVELS: LogLevel[] = ['trace', 'debug', 'info', 'warn', 'error', 'fatal'];
+
+/**
+ * Get available log levels
+ */
+export function getLogLevels(): LogLevel[] {
+  return [...LOG_LEVELS];
 }
 
 // ============================================

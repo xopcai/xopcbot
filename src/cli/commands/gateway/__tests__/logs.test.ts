@@ -1,11 +1,24 @@
+// Mock os.homedir for consistent paths across environments
+vi.mock("os", () => ({
+  homedir: () => "/root",
+}));
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// Set consistent HOME for tests
+process.env.HOME = '/root';
+
 import { createLogsCommand } from '../logs.js';
 
-// Mock child_process
-vi.mock('child_process', () => ({
-  spawn: vi.fn(),
-  execSync: vi.fn(),
-}));
+// Mock child_process - 需要导出所有被依赖的函数
+vi.mock('child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('child_process')>();
+  return {
+    ...actual,
+    spawn: vi.fn(),
+    execSync: vi.fn(),
+  };
+});
 
 // Mock dependencies
 vi.mock('../../index.js', () => ({
@@ -21,16 +34,19 @@ import { spawn, execSync } from 'child_process';
 describe('Gateway Logs Command', () => {
   let consoleLogSpy: ReturnType<typeof vi.spyOn>;
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+  let processExitSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    processExitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any);
     vi.clearAllMocks();
   });
 
   afterEach(() => {
     consoleLogSpy.mockRestore();
     consoleErrorSpy.mockRestore();
+    processExitSpy.mockRestore();
   });
 
   describe('createLogsCommand', () => {
@@ -120,7 +136,11 @@ describe('Gateway Logs Command', () => {
       const cmd = createLogsCommand();
       await cmd.parseAsync(['node', 'test']);
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to read logs'));
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        '❌ Failed to read logs:',
+        expect.any(Error)
+      );
+      expect(processExitSpy).toHaveBeenCalledWith(1);
     });
   });
 });

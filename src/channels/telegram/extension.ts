@@ -8,7 +8,7 @@
  * - Streaming messages
  */
 
-import { Bot, type Context, InputFile } from 'grammy';
+import { Bot, type Context } from 'grammy';
 import { run } from '@grammyjs/runner';
 import type {
   ChannelExtension,
@@ -21,26 +21,8 @@ import type {
   ChannelMetadata,
   TelegramAccountConfig,
 } from '../types.js';
-import {
-  normalizeAllowFromWithStore,
-  evaluateGroupBaseAccess,
-  evaluateGroupPolicyAccess,
-  resolveGroupPolicy,
-  resolveRequireMention,
-  hasBotMention,
-  removeBotMention,
-} from '../access-control.js';
 import { readUpdateOffset, writeUpdateOffset } from '../update-offset-store.js';
 import { draftStreamManager } from '../draft-stream.js';
-import { renderTelegramHtmlText, markdownToTelegramChunks } from '../format.js';
-import { splitTelegramCaption } from './caption.js';
-import { isTelegramHtmlParseError } from './errors.js';
-import { createRetryRunner, isRecoverableNetworkError } from '../../infra/retry.js';
-import { createLogger } from '../../utils/logger.js';
-import { compressAudio } from '../../utils/audio.js';
-import { getMimeType, getMediaCategory } from '../../utils/media.js';
-import { telegramUpdateDedupe, buildTelegramUpdateKey } from './dedupe.js';
-import { sentMessageCache } from './sent-cache.js';
 import { MediaGroupBuffer } from './media-group.js';
 import { InboundDebounce, buildTelegramDebounceKey } from './debounce.js';
 import type { Message } from '@grammyjs/types';
@@ -50,18 +32,9 @@ import { TelegramAccountManager } from './account-manager.js';
 import { createInboundProcessor } from './inbound-processor.js';
 import { createOutboundSender } from './outbound-sender.js';
 import type { ProgressStage } from '../types.js';
+import { createLogger } from '../../utils/logger.js';
 
 const log = createLogger('TelegramExtension');
-const STT_MAX_VOICE_DURATION_SECONDS = 60;
-
-/** Maximum retry attempts for TTS generation */
-const TTS_MAX_RETRIES = 3;
-
-/** Delay between TTS retry attempts in milliseconds */
-const TTS_RETRY_DELAY_MS = 500;
-
-/** Maximum message chunk size (leaving margin for Telegram's 4096 limit) */
-const MESSAGE_CHUNK_SIZE = 3800;
 
 // ============================================
 // Telegram Extension Implementation

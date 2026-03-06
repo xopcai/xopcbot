@@ -273,23 +273,6 @@ export {
   getAuditConfig,
 } from './audit.js';
 
-// Phase 3: Alerts
-export {
-  type AlertRule,
-  type AlertCondition,
-  type AlertAction,
-  type Alert,
-  addAlertRule,
-  removeAlertRule,
-  updateAlertRule,
-  getAlertRules,
-  clearAlertRules,
-  startAlertEngine,
-  stopAlertEngine,
-  isAlertEngineRunning,
-  presetRules,
-} from './alerts.js';
-
 // Backward compatibility
 export { logger as default };
 export { pino as Pino };

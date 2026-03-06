@@ -107,9 +107,35 @@ export class AgentOrchestrator {
    * Build an agent message from an inbound message
    */
   private buildUserMessage(msg: InboundMessage): AgentMessage {
+    // Build message content with text and images
+    const messageContent: Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }> = [];
+
+    // Add text content if present
+    if (msg.content.trim()) {
+      messageContent.push({ type: 'text', text: msg.content });
+    }
+
+    // Add image attachments
+    if (msg.attachments && msg.attachments.length > 0) {
+      for (const att of msg.attachments) {
+        if (att.type === 'image' || att.mimeType?.startsWith('image/')) {
+          const mimeType = att.mimeType || 'image/png';
+          const data = att.data || '';
+          messageContent.push({ type: 'image', data, mimeType });
+        } else {
+          // Non-image attachments: include as text description
+          const fileInfo = `[File: ${att.name || 'unknown'} (${att.mimeType || 'unknown type'}, ${att.size || 0} bytes)]`;
+          messageContent.push({ type: 'text', text: fileInfo });
+        }
+      }
+    }
+
+    // If no content at all, use empty string
+    const finalContent = messageContent.length > 0 ? messageContent : msg.content;
+
     return {
       role: 'user',
-      content: msg.content,
+      content: finalContent,
       timestamp: Date.now(),
     };
   }

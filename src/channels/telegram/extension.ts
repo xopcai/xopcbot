@@ -33,6 +33,17 @@ import { createInboundProcessor } from './inbound-processor.js';
 import { createOutboundSender } from './outbound-sender.js';
 import type { ProgressStage } from '../types.js';
 import { createLogger } from '../../utils/logger.js';
+// Import services for dependency injection into inbound-processor
+import {
+  normalizeAllowFromWithStore,
+  evaluateGroupBaseAccess,
+  resolveRequireMention,
+  hasBotMention,
+  removeBotMention,
+} from '../access-control.js';
+import { generateSessionKey } from '../../commands/session-key.js';
+import { transcribe, isSTTAvailable } from '../../stt/index.js';
+import { getMimeType } from '../../utils/media.js';
 
 const log = createLogger('TelegramExtension');
 
@@ -112,6 +123,24 @@ export class TelegramChannelExtension implements ChannelExtension {
       bus: options.bus,
       config: options.config,
       accountManager: this.accountManager,
+      // Inject external services for testability
+      accessControl: {
+        normalizeAllowFromWithStore,
+        evaluateGroupBaseAccess,
+        resolveRequireMention,
+        hasBotMention,
+        removeBotMention,
+      },
+      sessionKeyService: {
+        generateSessionKey,
+      },
+      sttService: {
+        transcribe,
+        isSTTAvailable,
+      },
+      mediaUtils: {
+        getMimeType,
+      },
     });
 
     this.outboundSender = createOutboundSender({

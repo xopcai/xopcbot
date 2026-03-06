@@ -1,30 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createInboundProcessor } from '../inbound-processor.js';
+import { createInboundProcessor, type InboundProcessorDeps } from '../inbound-processor.js';
 import { TelegramAccountManager } from '../account-manager.js';
 import type { Config } from '../../../config/schema.js';
 import type { MessageBus } from '../../../bus/index.js';
 import type { Bot, Context } from 'grammy';
 import type { Message } from '@grammyjs/types';
 
-// Mock dependencies
+// Mock dedupe module
 vi.mock('../dedupe.js', () => ({
   telegramUpdateDedupe: {
-    checkAndAdd: vi.fn(() => false), // Not a duplicate by default
+    checkAndAdd: vi.fn(() => false),
   },
   buildTelegramUpdateKey: vi.fn(() => 'test-update-key'),
-}));
-
-vi.mock('../../../commands/session-key.js', () => ({
-  generateSessionKey: vi.fn(() => 'telegram:12345:67890'),
-}));
-
-vi.mock('../../../stt/index.js', () => ({
-  transcribe: vi.fn().mockResolvedValue({ text: 'Transcribed text' }),
-  isSTTAvailable: vi.fn(() => false), // Disabled by default
-}));
-
-vi.mock('../../../utils/media.js', () => ({
-  getMimeType: vi.fn(() => 'image/jpeg'),
 }));
 
 vi.mock('../../../utils/logger.js', () => ({
@@ -36,22 +23,34 @@ vi.mock('../../../utils/logger.js', () => ({
   })),
 }));
 
-vi.mock('../access-control.js', () => ({
-  normalizeAllowFromWithStore: vi.fn((x) => x.allowFrom ?? []),
-  evaluateGroupBaseAccess: vi.fn(() => ({ allowed: true })),
-  evaluateGroupPolicyAccess: vi.fn(() => ({ allowed: true })),
-  resolveGroupPolicy: vi.fn(() => 'open'),
-  resolveRequireMention: vi.fn(() => false),
-  hasBotMention: vi.fn(() => true),
-  removeBotMention: vi.fn((text) => text),
-}));
-
 describe('inbound-processor', () => {
   let accountManager: TelegramAccountManager;
   let mockBus: MessageBus;
   let mockConfig: Config;
   let processor: ReturnType<typeof createInboundProcessor>;
   let mockBot: Bot;
+
+  // Mock services for dependency injection
+  const mockAccessControl = {
+    normalizeAllowFromWithStore: vi.fn((x) => x.allowFrom ?? []),
+    evaluateGroupBaseAccess: vi.fn(() => ({ allowed: true })),
+    resolveRequireMention: vi.fn(() => false),
+    hasBotMention: vi.fn(() => true),
+    removeBotMention: vi.fn((text) => text),
+  };
+
+  const mockSessionKeyService = {
+    generateSessionKey: vi.fn(() => 'telegram:12345:67890'),
+  };
+
+  const mockSttService = {
+    transcribe: vi.fn().mockResolvedValue({ text: 'Transcribed text' }),
+    isSTTAvailable: vi.fn(() => false),
+  };
+
+  const mockMediaUtils = {
+    getMimeType: vi.fn(() => 'image/jpeg'),
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -80,11 +79,18 @@ describe('inbound-processor', () => {
 
     mockConfig = {};
 
-    processor = createInboundProcessor({
+    // Create processor with injected dependencies (P1 improvement)
+    const deps: InboundProcessorDeps = {
       bus: mockBus,
       config: mockConfig,
       accountManager,
-    });
+      accessControl: mockAccessControl,
+      sessionKeyService: mockSessionKeyService,
+      sttService: mockSttService,
+      mediaUtils: mockMediaUtils,
+    };
+
+    processor = createInboundProcessor(deps);
   });
 
   describe('basic message processing', () => {
@@ -134,6 +140,40 @@ describe('inbound-processor', () => {
     });
   });
 
+  describe('dependency injection (P1 improvement)', () => {
+    it('should use injected accessControl service', async () => {
+      const mockCtx = createMockContext({ text: 'Hello' });
+
+      await processor(mockCtx as Context, 'default');
+
+      expect(mockAccessControl.evaluateGroupBaseAccess).toHaveBeenCalled();
+      expect(mockAccessControl.normalizeAllowFromWithStore).toHaveBeenCalled();
+    });
+
+    it('should use injected sessionKeyService', async () => {
+      const mockCtx = createMockContext({ text: 'Hello' });
+
+      await processor(mockCtx as Context, 'default');
+
+      expect(mockSessionKeyService.generateSessionKey).toHaveBeenCalledWith({
+        source: 'telegram',
+        chatId: '12345',
+        senderId: '67890',
+        isGroup: false,
+        threadId: undefined,
+      });
+    });
+
+    it('should respect access control rejection', async () => {
+      mockAccessControl.evaluateGroupBaseAccess.mockReturnValueOnce({ allowed: false, reason: 'blocked' });
+      
+      const mockCtx = createMockContext({ text: 'Hello' });
+      await processor(mockCtx as Context, 'default');
+
+      expect(mockBus.publishInbound).not.toHaveBeenCalled();
+    });
+  });
+
   describe('queue management', () => {
     it('should process messages sequentially', async () => {
       const mockCtx1 = createMockContext({ text: 'Message 1', chatId: 12345 });
@@ -164,6 +204,31 @@ describe('inbound-processor', () => {
       expect(call).toHaveProperty('chat_id');
       expect(call).toHaveProperty('content');
       expect(call).toHaveProperty('metadata');
+    });
+  });
+
+  describe('media processing helper functions (P3 improvement)', () => {
+    beforeEach(() => {
+      // Mock global fetch for media download
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        arrayBuffer: vi.fn().mockResolvedValue(Buffer.from('fake-image-data')),
+      });
+    });
+
+    it('should process media attachments when photo is sent', async () => {
+      const mockCtx = createMockContext({
+        caption: 'Photo caption',
+        chatId: 12345,
+        fromId: 67890,
+      });
+      // Add photo to message
+      (mockCtx.message as any).photo = [{ file_id: 'photo1' }, { file_id: 'photo2' }];
+
+      await processor(mockCtx as Context, 'default');
+
+      expect(mockBot.api.getFile).toHaveBeenCalledWith('photo2'); // Takes last photo
+      expect(mockMediaUtils.getMimeType).toHaveBeenCalled();
     });
   });
 });

@@ -267,7 +267,10 @@ export function createOutboundSender(deps: OutboundSenderDeps) {
       });
 
       try {
-        const result = await bot.api.sendMessage(chatId, chunks[0].html, sendOptions);
+        const result = await bot.api.sendMessage(chatId, chunks[0].html, {
+          ...sendOptions,
+          parse_mode: 'HTML',
+        });
         return result.message_id;
       } catch (err) {
         // Fallback to plain text on HTML parse error

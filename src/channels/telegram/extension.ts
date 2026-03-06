@@ -31,6 +31,7 @@ import { createTelegramCommandHandler } from './command-handler.js';
 import { TelegramAccountManager } from './account-manager.js';
 import { createInboundProcessor } from './inbound-processor.js';
 import { createOutboundSender } from './outbound-sender.js';
+import { renderTelegramHtmlText } from '../format.js';
 import type { ProgressStage } from '../types.js';
 import { createLogger } from '../../utils/logger.js';
 // Import services for dependency injection into inbound-processor
@@ -517,13 +518,16 @@ export class TelegramChannelExtension implements ChannelExtension {
 
     return {
       update: (text: string) => {
-        // draftStream now handles formatTelegramMessage internally
-        draftStream.update(text);
+        // Convert Markdown to Telegram HTML before passing to draft stream.
+        // The draft stream is configured with parseMode='HTML', so it expects
+        // pre-converted HTML, not raw Markdown.
+        const html = renderTelegramHtmlText(text);
+        draftStream.update(html);
       },
       /** Update stream with progress stage indicator */
       updateProgress: (text: string, stage: ProgressStage, detail?: string) => {
-        // draftStream now handles formatTelegramMessage internally
-        draftStream.updateWithProgress(text, stage, detail);
+        const html = renderTelegramHtmlText(text);
+        draftStream.updateWithProgress(html, stage, detail);
       },
       /** Set progress stage without updating text */
       setProgress: (stage: ProgressStage, detail?: string) => {

@@ -124,13 +124,31 @@ export class AgentOrchestrator {
             log.warn({ type: att.type, name: att.name }, 'Empty image data, skipping');
             continue;
           }
-          const mimeType = att.mimeType || 'image/png';
+          const mimeType = att.mimeType || 'image/jpeg';  // Fixed: JPEG is Telegram's default
           messageContent.push({ type: 'image', data: att.data, mimeType });
         } else {
           // Non-image attachments: include as text description
           const fileInfo = `[File: ${att.name || 'unknown'} (${att.mimeType || 'unknown type'}, ${att.size || 0} bytes)]`;
           messageContent.push({ type: 'text', text: fileInfo });
         }
+      }
+
+      // If only images were added with no text, add a default prompt so the LLM
+      // knows it should describe or analyze the image(s).
+      const hasText = messageContent.some((item) => item.type === 'text');
+      const hasImage = messageContent.some((item) => item.type === 'image');
+      if (hasImage && !hasText) {
+        messageContent.unshift({ type: 'text', text: 'Please analyze the image(s) I sent.' });
+      }
+
+      // If messageContent is still empty (all attachments were skipped), fall back to text
+      if (messageContent.length === 0) {
+        log.warn({ attachmentCount: msg.attachments.length }, 'All attachments were skipped, falling back to text message');
+        return {
+          role: 'user',
+          content: msg.content || '[Image attachment could not be processed]',
+          timestamp: Date.now(),
+        };
       }
 
       return {

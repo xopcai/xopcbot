@@ -372,9 +372,22 @@ export function createInboundProcessor(deps: InboundProcessorDeps) {
         defaultRequireMention: true,
       });
 
-      if (requireMention && !accessControl.hasBotMention({ botUsername, text: content, entities: message.entities })) {
-        log.debug({ accountId, chatId }, 'Group message without mention ignored');
-        return;
+      // For media messages (photo, video, etc.) without caption, check caption entities too.
+      // A media message with a bot mention in caption_entities should pass the mention check.
+      const hasMedia = !!(message.photo || message.document || message.video || message.audio || message.voice);
+      const captionEntities = (message as any).caption_entities;
+      const hasMention = accessControl.hasBotMention({ botUsername, text: content, entities: message.entities }) ||
+        (hasMedia && accessControl.hasBotMention({ botUsername, text: message.caption ?? '', entities: captionEntities }));
+
+      if (requireMention && !hasMention) {
+        // Allow media-only messages (no caption) through if the group policy allows it.
+        // This prevents silently dropping photos sent without a bot mention when
+        // the group is configured to allow media without explicit mention.
+        if (!hasMedia || content.trim().length > 0) {
+          log.debug({ accountId, chatId }, 'Group message without mention ignored');
+          return;
+        }
+        log.debug({ accountId, chatId }, 'Group media message without mention - processing anyway');
       }
     }
 

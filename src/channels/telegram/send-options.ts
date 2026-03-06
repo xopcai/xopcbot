@@ -56,12 +56,9 @@ export function parseDataUrl(dataUrl: string): { mimeType: string; buffer: Buffe
   const mimeType = match[1];
   const base64Data = match[2];
 
-  try {
-    const buffer = Buffer.from(base64Data, 'base64');
-    return { mimeType, buffer };
-  } catch {
-    return null;
-  }
+  // Buffer.from doesn't throw for invalid base64, it silently handles it
+  const buffer = Buffer.from(base64Data, 'base64');
+  return { mimeType, buffer };
 }
 
 /**

@@ -21,11 +21,19 @@ import { sentMessageCache } from './sent-cache.js';
 import { createRetryRunner, isRecoverableNetworkError } from '../../infra/retry.js';
 import { createLogger } from '../../utils/logger.js';
 import { isTelegramHtmlParseError } from './errors.js';
+import { speak, isTTSAvailable } from '../../tts/index.js';
+import { compressAudio } from '../../utils/audio.js';
 
 const log = createLogger('TelegramOutboundSender');
 
 /** Maximum message chunk size */
 const MESSAGE_CHUNK_SIZE = 3800;
+
+/** Maximum retry attempts for TTS generation */
+const TTS_MAX_RETRIES = 3;
+
+/** Delay between TTS retry attempts in milliseconds */
+const TTS_RETRY_DELAY_MS = 500;
 
 export interface OutboundSenderDeps {
   accountManager: TelegramAccountManager;
@@ -93,6 +101,14 @@ export function createOutboundSender(deps: OutboundSenderDeps) {
       // Handle remote URL media
       else if (mediaUrl) {
         sentMessageId = await sendRemoteUrlMedia(bot, chatId, mediaUrl, mediaType, content, {
+          threadId,
+          replyToMessageId,
+          silent,
+        });
+      }
+      // Handle TTS voice
+      else if (options.tts && deps.config?.tts && isTTSAvailable(deps.config.tts)) {
+        sentMessageId = await sendTtsVoice(bot, chatId, content, {
           threadId,
           replyToMessageId,
           silent,
@@ -279,6 +295,86 @@ export function createOutboundSender(deps: OutboundSenderDeps) {
     }
 
     return firstMessageId;
+  }
+
+  async function sendTtsVoice(
+    bot: Bot,
+    chatId: string,
+    content: string | undefined,
+    options?: { threadId?: string; replyToMessageId?: string; silent?: boolean }
+  ): Promise<number> {
+    log.info({ chatId, contentLength: content?.length }, 'Generating TTS voice message');
+
+    let sentMessageId: number | undefined;
+    let ttsErrorOccurred = false;
+
+    for (let attempt = 1; attempt <= TTS_MAX_RETRIES + 1; attempt++) {
+      try {
+        const ttsResult = await speak(content || '', deps.config!.tts!);
+
+        // Compress audio if it's wav format
+        const { buffer: compressedAudio, format: compressedFormat } = await compressAudio(
+          Buffer.from(ttsResult.audio),
+          ttsResult.format
+        );
+
+        const file = new InputFile(compressedAudio, `voice.${compressedFormat}`);
+
+        const sendOptions = buildSendOptions({
+          threadId: options?.threadId,
+          replyToMessageId: options?.replyToMessageId,
+          silent: options?.silent,
+        });
+
+        // Use sendVoice for opus, sendAudio for other formats
+        if (compressedFormat === 'opus') {
+          const result = await bot.api.sendVoice(chatId, file, sendOptions);
+          sentMessageId = result.message_id;
+        } else {
+          const result = await bot.api.sendAudio(chatId, file, sendOptions);
+          sentMessageId = result.message_id;
+        }
+
+        log.info({
+          chatId,
+          messageId: sentMessageId,
+          provider: ttsResult.provider,
+          format: compressedFormat,
+          attempt,
+        }, 'TTS voice message sent');
+        break; // Success, exit retry loop
+      } catch (ttsError) {
+        const errorMsg = ttsError instanceof Error ? ttsError.message : String(ttsError);
+
+        if (attempt <= TTS_MAX_RETRIES) {
+          log.warn({
+            error: errorMsg,
+            attempt,
+            maxRetries: TTS_MAX_RETRIES,
+            textLength: content?.length,
+          }, `TTS generation failed (attempt ${attempt}/${TTS_MAX_RETRIES + 1}), retrying...`);
+          ttsErrorOccurred = true;
+          // Exponential backoff
+          await new Promise((resolve) => setTimeout(resolve, attempt * TTS_RETRY_DELAY_MS));
+        } else {
+          log.error({
+            error: errorMsg,
+            attempt,
+            textLength: content?.length,
+            provider: deps.config!.tts!.provider,
+          }, 'TTS generation failed after all retries, falling back to text');
+          ttsErrorOccurred = true;
+        }
+      }
+    }
+
+    // Fallback to text message if all TTS attempts failed
+    if (ttsErrorOccurred && !sentMessageId) {
+      log.info({ chatId }, 'Falling back to text message after TTS failure');
+      sentMessageId = await sendTextMessage(bot, chatId, content || '', options);
+    }
+
+    return sentMessageId;
   }
 
   return { send };

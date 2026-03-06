@@ -54,6 +54,12 @@ export class TelegramAccountManager {
     if (runner) {
       await runner.stop();
       this.runners.delete(accountId);
+      // Update status to stopped
+      this.updateStatus({
+        accountId,
+        running: false,
+        mode: 'stopped',
+      });
     }
   }
 

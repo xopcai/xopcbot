@@ -10,8 +10,7 @@
  * - Event publishing to bus
  */
 
-import type { Bot, Context } from 'grammy';
-import type { Message } from '@grammyjs/types';
+import type { Context } from 'grammy';
 import type { Config } from '../../config/schema.js';
 import type { MessageBus } from '../../bus/index.js';
 import type { TelegramAccountManager } from './account-manager.js';
@@ -19,8 +18,6 @@ import { telegramUpdateDedupe, buildTelegramUpdateKey } from './dedupe.js';
 import {
   normalizeAllowFromWithStore,
   evaluateGroupBaseAccess,
-  evaluateGroupPolicyAccess,
-  resolveGroupPolicy,
   resolveRequireMention,
   hasBotMention,
   removeBotMention,

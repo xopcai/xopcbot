@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createOutboundSender } from '../outbound-sender.js';
 import { TelegramAccountManager } from '../account-manager.js';
-import type { Config, ChannelSendOptions, ChannelSendResult } from '../../types.js';
+import type { Config, ChannelSendOptions } from '../../types.js';
 import type { Bot } from 'grammy';
 
 // Mock dependencies

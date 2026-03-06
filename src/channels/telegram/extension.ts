@@ -108,14 +108,6 @@ export class TelegramChannelExtension implements ChannelExtension {
     this.bus = options.bus;
     this.config = options.config;
     
-    // Create command handler for shared state
-    const commandHandler = createTelegramCommandHandler({
-      bus: options.bus,
-      config: options.config,
-      getSessionModel: (sessionKey) => this.getSessionModel(sessionKey),
-      setSessionModel: (sessionKey, modelId) => this.setSessionModel(sessionKey, modelId),
-    });
-    
     this.inboundProcessor = createInboundProcessor({
       bus: options.bus,
       config: options.config,

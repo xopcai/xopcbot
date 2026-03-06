@@ -344,15 +344,6 @@ export function parseInline(text: string, options: ParseOptions = {}): MarkdownN
 
   return parseInlineRecursive(text);
 }
-
-/**
- * Check if text appears to already be HTML (contains HTML tags)
- */
-function looksLikeHtml(text: string): boolean {
-  // Simple heuristic: if text contains angle brackets that look like HTML tags
-  return /<[a-z][^>]*>/i.test(text);
-}
-
 /**
  * Render IR to Telegram HTML
  */
@@ -616,10 +607,8 @@ export function renderTelegramHtmlText(text: string, options: { textMode?: 'mark
   if (textMode === 'html') {
     return text;
   }
-  // If text already contains HTML tags, assume it's already HTML and return as-is
-  if (looksLikeHtml(text)) {
-    return text;
-  }
+  // Always parse markdown to ensure proper conversion to Telegram HTML
+  // The markdown parser handles mixed content (markdown + HTML tags) correctly
   const ir = parseMarkdownToIR(text, { linkify: true, enableSpoilers: true });
   return renderToTelegramHtml(ir);
 }

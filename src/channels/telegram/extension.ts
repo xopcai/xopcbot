@@ -392,36 +392,39 @@ export class TelegramChannelExtension implements ChannelExtension {
       return;
     }
 
-    // Combine all photos into attachments
-    const allMedia: Array<{ type: string; fileId: string }> = [];
-    for (const msg of messages) {
-      if (msg.photo?.length) {
-        allMedia.push({ type: 'photo', fileId: msg.photo[msg.photo.length - 1].file_id });
-      }
-      if (msg.document) allMedia.push({ type: 'document', fileId: msg.document.file_id });
-      if (msg.video) allMedia.push({ type: 'video', fileId: msg.video.file_id });
-    }
-
     // Get combined caption from last message with caption
     const lastMessageWithCaption = [...messages].reverse().find(m => m.caption || m.text);
     const combinedCaption = lastMessageWithCaption?.caption || lastMessageWithCaption?.text || '';
 
-    // Create synthetic context with combined media
-    const syntheticCtx = {
-      ...firstCtx,
-      message: {
-        ...firstCtx.message,
-        caption: combinedCaption,
-        photo: undefined, // Processed separately via allMedia
-      },
-    };
+    // Collect the highest-resolution photo from each message in the album
+    const allPhotos = messages
+      .filter(m => m.photo?.length)
+      .map(m => m.photo![m.photo!.length - 1]);
+
+    // Also collect other media types
+    const allMedia: Array<{ type: string; fileId: string }> = [];
+    for (const msg of messages) {
+      if (msg.document) allMedia.push({ type: 'document', fileId: msg.document.file_id });
+      if (msg.video) allMedia.push({ type: 'video', fileId: msg.video.file_id });
+    }
 
     log.info({
       accountId,
       chatId: firstCtx.chat?.id,
       messageCount: messages.length,
+      photoCount: allPhotos.length,
       mediaCount: allMedia.length,
     }, 'Processing media group');
+
+    // Preserve photo field so extractMediaItems can find it
+    const syntheticCtx = {
+      ...firstCtx,
+      message: {
+        ...firstCtx.message,
+        caption: combinedCaption,
+        photo: allPhotos.length > 0 ? allPhotos : firstCtx.message?.photo,
+      },
+    };
 
     await this.inboundProcessor(syntheticCtx as Context, accountId);
   }
@@ -447,22 +450,29 @@ export class TelegramChannelExtension implements ChannelExtension {
       .filter(Boolean)
       .join('\n');
 
-    // Create synthetic context with combined text
-    const syntheticCtx = {
-      ...first.ctx,
-      message: {
-        ...first.message,
-        text: combinedText,
-        caption: undefined,
-      },
-    };
+    // Collect photos from all merged messages
+    const allPhotos = items
+      .filter(item => item.message.photo?.length)
+      .map(item => item.message.photo![item.message.photo!.length - 1]);
 
     log.info({
       accountId,
       chatId: first.ctx.chat?.id,
       messageCount: items.length,
       combinedLength: combinedText.length,
+      photoCount: allPhotos.length,
     }, 'Processing debounced messages');
+
+    // Preserve photo field in the merged synthetic context
+    const syntheticCtx = {
+      ...first.ctx,
+      message: {
+        ...first.message,
+        text: combinedText || undefined,
+        caption: undefined,
+        photo: allPhotos.length > 0 ? allPhotos : first.message.photo,
+      },
+    };
 
     await this.inboundProcessor(syntheticCtx as Context, accountId);
   }

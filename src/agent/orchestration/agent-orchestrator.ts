@@ -118,7 +118,7 @@ export class AgentOrchestrator {
 
       // Add image attachments
       for (const att of msg.attachments) {
-        if (att.type === 'image' || att.mimeType?.startsWith('image/')) {
+        if (att.type === 'image' || att.type === 'photo' || att.mimeType?.startsWith('image/')) {
           // Skip empty image data
           if (!att.data || att.data.length === 0) {
             log.warn({ type: att.type, name: att.name }, 'Empty image data, skipping');

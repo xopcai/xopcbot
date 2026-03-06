@@ -98,7 +98,7 @@ export function getLogPath(
 /**
  * Get available log files for a date range
  */
-export function getLogFilesForRange(from: Date, to: Date): LogFileMeta[] {
+function getLogFilesForRange(from: Date, to: Date): LogFileMeta[] {
   const allFiles = getLogFiles();
   
   return allFiles.filter(f => {
@@ -489,7 +489,7 @@ export function cleanOldLogs(keepDays: number = 7): {
 /**
  * Clean logs by size (keep total under limit)
  */
-export function cleanBySize(maxTotalMB: number = 500): {
+function cleanBySize(maxTotalMB: number = 500): {
   deleted: number;
   freedBytes: number;
   errors: string[];

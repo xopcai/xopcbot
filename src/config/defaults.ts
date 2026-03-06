@@ -10,16 +10,16 @@ import type { ModelDefinitionConfig, ModelProviderConfig } from './types.models.
 // Default Values
 // ============================================
 
-export const DEFAULT_MODEL_COST: ModelDefinitionConfig['cost'] = {
+const DEFAULT_MODEL_COST: ModelDefinitionConfig['cost'] = {
   input: 0,
   output: 0,
   cacheRead: 0,
   cacheWrite: 0,
 };
 
-export const DEFAULT_MODEL_INPUT: ModelDefinitionConfig['input'] = ["text"];
-export const DEFAULT_MODEL_MAX_TOKENS = 8192;
-export const DEFAULT_CONTEXT_TOKENS = 128000;
+const DEFAULT_MODEL_INPUT: ModelDefinitionConfig['input'] = ["text"];
+const DEFAULT_MODEL_MAX_TOKENS = 8192;
+const DEFAULT_CONTEXT_TOKENS = 128000;
 
 // ============================================
 // Helper Functions
@@ -66,11 +66,11 @@ function resolveDefaultProviderApi(
 // Apply Model Defaults
 // ============================================
 
-export interface ApplyModelDefaultsOptions {
+interface ApplyModelDefaultsOptions {
   warn?: (message: string) => void;
 }
 
-export function applyModelDefaults(
+function applyModelDefaults(
   cfg: { models?: { providers?: Record<string, ModelProviderConfig> } },
   _options: ApplyModelDefaultsOptions = {},
 ): { models?: { providers?: Record<string, ModelProviderConfig> } } {
@@ -184,7 +184,7 @@ export function applyModelDefaults(
 // Model aliases have been removed. This function is kept as a no-op
 // for any code that may still call it, but it just returns the input.
 
-export function resolveModelAlias(alias: string): string | null {
+function resolveModelAlias(alias: string): string | null {
   if (!alias || typeof alias !== 'string') {
     return null;
   }

@@ -149,7 +149,7 @@ describe('AgentOrchestrator', () => {
         });
       });
 
-      it('should use image/png as default mimeType when not specified', () => {
+      it('should use image/jpeg as default mimeType when not specified', () => {
         const msg: InboundMessage = {
           channel: 'telegram',
           sender_id: '123',
@@ -170,7 +170,7 @@ describe('AgentOrchestrator', () => {
 
         // The attachment type is 'image' so it should be treated as image
         const imageContent = content.find(c => c.type === 'image');
-        expect(imageContent?.mimeType).toBe('image/png');
+        expect(imageContent?.mimeType).toBe('image/jpeg');
       });
 
       it('should detect image from mimeType even if type is not photo', () => {
@@ -321,10 +321,12 @@ describe('AgentOrchestrator', () => {
         };
 
         const result = callBuildUserMessage(orchestrator, msg);
-        const content = result.content as Array<{ type: string }>;
+        const content = result.content as Array<{ type: string; text?: string }>;
 
-        expect(content).toHaveLength(1);
-        expect(content[0]).toEqual({ type: 'image', data: 'imagedata', mimeType: 'image/jpeg' });
+        // Should add default prompt when only image without text
+        expect(content).toHaveLength(2);
+        expect(content[0]).toEqual({ type: 'text', text: 'Please analyze the image(s) I sent.' });
+        expect(content[1]).toEqual({ type: 'image', data: 'imagedata', mimeType: 'image/jpeg' });
       });
 
       it('should create only image content when text is whitespace only', () => {
@@ -345,11 +347,13 @@ describe('AgentOrchestrator', () => {
         };
 
         const result = callBuildUserMessage(orchestrator, msg);
-        const content = result.content as Array<{ type: string }>;
+        const content = result.content as Array<{ type: string; text?: string }>;
 
-        // Whitespace-only content should be trimmed and not included
-        expect(content).toHaveLength(1);
-        expect(content[0].type).toBe('image');
+        // Whitespace-only content should be trimmed and default prompt added
+        expect(content).toHaveLength(2);
+        expect(content[0]).toEqual({ type: 'text', text: 'Please analyze the image(s) I sent.' });
+        expect(content[1]).toEqual({ type: 'image', data: 'imagedata', mimeType: 'image/jpeg' });
+      });
       });
     });
 

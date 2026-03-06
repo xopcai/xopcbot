@@ -61,9 +61,9 @@ function applyJitter(delayMs: number, jitter: number): number {
 }
 
 /**
- * Resolve retry configuration with defaults (Internal)
+ * Resolve retry configuration with defaults
  */
-function resolveRetryConfig(
+export function resolveRetryConfig(
   defaults: Required<RetryConfig> = DEFAULT_RETRY_CONFIG,
   overrides?: RetryConfig
 ): Required<RetryConfig> {
@@ -141,9 +141,9 @@ export async function withRetry<T>(
 }
 
 /**
- * Telegram-specific recoverable error codes (Internal)
+ * Telegram-specific recoverable error codes
  */
-const RECOVERABLE_ERROR_CODES = new Set([
+export const RECOVERABLE_ERROR_CODES = new Set([
   'ECONNRESET',
   'ECONNREFUSED',
   'EPIPE',
@@ -163,9 +163,9 @@ const RECOVERABLE_ERROR_CODES = new Set([
 ]);
 
 /**
- * Telegram-specific recoverable error names (Internal)
+ * Telegram-specific recoverable error names
  */
-const RECOVERABLE_ERROR_NAMES = new Set([
+export const RECOVERABLE_ERROR_NAMES = new Set([
   'AbortError',
   'TimeoutError',
   'ConnectTimeoutError',

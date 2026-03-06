@@ -64,12 +64,13 @@ function estimateMessageTokens(msg: AgentMessage): number {
   return estimateTokens(text) + 10;
 }
 
-export interface ReasoningDetails {
+// Internal: Reasoning extraction utilities
+interface ReasoningDetails {
   thinking?: string;
   signature?: string;
 }
 
-export function extractLastReasoning(messages: AgentMessage[]): ReasoningDetails | null {
+function extractLastReasoning(messages: AgentMessage[]): ReasoningDetails | null {
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i];
     if (msg.role === 'assistant') {
@@ -82,7 +83,8 @@ export function extractLastReasoning(messages: AgentMessage[]): ReasoningDetails
   return null;
 }
 
-export function injectReasoningIntoFirstAssistant(
+// Internal: Inject reasoning into first assistant message
+function injectReasoningIntoFirstAssistant(
   messages: AgentMessage[],
   reasoning: ReasoningDetails
 ): void {
@@ -97,7 +99,8 @@ export function injectReasoningIntoFirstAssistant(
   }
 }
 
-export interface MessageUsage {
+// Internal: Message usage tracking
+interface MessageUsage {
   input: number;
   output: number;
   total: number;
@@ -130,11 +133,12 @@ export function accumulateUsage(messages: AgentMessage[]): MessageUsage | undefi
   };
 }
 
-export type DroppableMessage = AgentMessage & {
+// Internal: Droppable message filtering
+type DroppableMessage = AgentMessage & {
   droppable?: boolean;
 };
 
-export function filterDroppableMessages(messages: AgentMessage[]): AgentMessage[] {
+function filterDroppableMessages(messages: AgentMessage[]): AgentMessage[] {
   return messages.filter(msg => !(msg as DroppableMessage).droppable);
 }
 
@@ -159,7 +163,8 @@ function findNthTurnFromEnd(messages: AgentMessage[], n: number): number {
   return 0;
 }
 
-export function calculateCompactionRange(
+// Internal: Calculate compaction range
+function calculateCompactionRange(
   messages: AgentMessage[],
   config: CompactionConfig
 ): { start: number; end: number } | null {

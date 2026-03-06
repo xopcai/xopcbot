@@ -1,12 +1,12 @@
 /**
  * Telegram Caption Utilities
- * 
+ *
  * Handles splitting text for media captions vs follow-up messages.
  * Telegram captions have a 1024 character limit.
  */
 
-export const TELEGRAM_CAPTION_LIMIT = 1024;
-export const TELEGRAM_MESSAGE_LIMIT = 4096;
+const TELEGRAM_CAPTION_LIMIT = 1024;
+const TELEGRAM_MESSAGE_LIMIT = 4096;
 
 export interface CaptionSplit {
   /** The caption (max 1024 chars) */
@@ -68,7 +68,7 @@ function findGoodSplitPoint(text: string, limit: number): number {
   const sentencePattern = /[.!?]\s+/g;
   let match;
   let lastMatchIndex = -1;
-  
+
   while ((match = sentencePattern.exec(text)) !== null) {
     if (match.index > searchEnd && match.index <= searchStart) {
       lastMatchIndex = match.index + 1; // Include the punctuation
@@ -76,7 +76,7 @@ function findGoodSplitPoint(text: string, limit: number): number {
       break;
     }
   }
-  
+
   if (lastMatchIndex > 0) {
     return lastMatchIndex;
   }
@@ -96,7 +96,7 @@ function findGoodSplitPoint(text: string, limit: number): number {
  * Smart text chunking that preserves markdown structure
  * Uses the markdown-ir system for better splitting
  */
-export function smartChunkText(
+function smartChunkText(
   text: string,
   limit: number = TELEGRAM_MESSAGE_LIMIT
 ): string[] {
@@ -109,7 +109,7 @@ export function smartChunkText(
 
   while (remaining.length > limit) {
     const splitIndex = findGoodSplitPoint(remaining, limit);
-    
+
     if (splitIndex <= 0 || splitIndex >= remaining.length) {
       // Force split at limit
       chunks.push(remaining.slice(0, limit));
@@ -130,7 +130,7 @@ export function smartChunkText(
 /**
  * Calculate approximate byte size (for media upload limits)
  */
-export function calculateByteSize(text: string): number {
+function calculateByteSize(text: string): number {
   // UTF-8 encoding: most chars are 1-3 bytes
   return new TextEncoder().encode(text).length;
 }
@@ -138,17 +138,17 @@ export function calculateByteSize(text: string): number {
 /**
  * Truncate text with ellipsis if it exceeds limit
  */
-export function truncateWithEllipsis(text: string, limit: number): string {
+function truncateWithEllipsis(text: string, limit: number): string {
   if (text.length <= limit) return text;
-  
+
   const ellipsis = '...';
   const truncated = text.slice(0, limit - ellipsis.length);
-  
+
   // Try to end at word boundary
   const lastSpace = truncated.lastIndexOf(' ');
   if (lastSpace > truncated.length * 0.8) {
     return truncated.slice(0, lastSpace) + ellipsis;
   }
-  
+
   return truncated + ellipsis;
 }

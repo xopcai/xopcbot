@@ -23,11 +23,11 @@ import {
 } from './workspace.js';
 
 // =============================================================================
-// Configuration
+// Configuration (Internal)
 // =============================================================================
 
 /** Maximum characters to inject from workspace files into system prompt */
-export const PROMPT_MAX_CHARS = {
+const PROMPT_MAX_CHARS = {
   SOUL: 8_000,
   USER: 4_000,
   IDENTITY: 2_000,
@@ -496,9 +496,9 @@ export function buildSystemPrompt(
 }
 
 /**
- * Build minimal system prompt for subagents/cron jobs
+ * Build minimal system prompt for subagents/cron jobs (Internal)
  */
-export function buildMinimalSystemPrompt(
+function buildMinimalSystemPrompt(
   workspaceDir: string,
   bootstrapFiles: WorkspaceBootstrapFile[]
 ): string {
@@ -510,9 +510,9 @@ export function buildMinimalSystemPrompt(
 }
 
 /**
- * Get bootstrap file by name
+ * Get bootstrap file by name (Internal)
  */
-export function getBootstrapFile(
+function getBootstrapFile(
   bootstrapFiles: WorkspaceBootstrapFile[],
   name: string
 ): WorkspaceBootstrapFile | undefined {
@@ -520,9 +520,9 @@ export function getBootstrapFile(
 }
 
 /**
- * Check if specific bootstrap file exists and is loaded
+ * Check if specific bootstrap file exists and is loaded (Internal)
  */
-export function hasBootstrapFile(
+function hasBootstrapFile(
   bootstrapFiles: WorkspaceBootstrapFile[],
   name: string
 ): boolean {

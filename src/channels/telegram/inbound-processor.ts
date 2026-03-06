@@ -152,11 +152,35 @@ async function processMediaItem(
     const downloadUrl = `${accountApiRoot}/file/bot${botToken}/${file.file_path}`;
     const response = await fetch(downloadUrl);
 
+    // Debug log for media download
+    log.info({
+      type: item.type,
+      fileId: item.fileId,
+      downloadUrl,
+      responseStatus: response.status,
+    }, 'Media download response');
+
     if (!response.ok) {
       throw new Error(`Failed to download: ${response.status}`);
     }
 
     const buffer = await response.arrayBuffer();
+
+    // Debug log for buffer size
+    log.info({
+      type: item.type,
+      fileId: item.fileId,
+      bufferSize: buffer.byteLength,
+      filePath: file.file_path,
+    }, 'Media buffer downloaded');
+
+    if (buffer.byteLength === 0) {
+      log.warn({
+        type: item.type,
+        fileId: item.fileId,
+        filePath: file.file_path,
+      }, 'Media buffer is empty, may cause issues');
+    }
     let transcribedText = '';
 
     // Handle voice messages with STT
@@ -179,6 +203,15 @@ async function processMediaItem(
 
     const base64 = Buffer.from(buffer).toString('base64');
     const mimeType = mediaUtils.getMimeType(item.type, file.file_path);
+
+    // Debug log for attachment creation
+    log.info({
+      type: item.type,
+      mimeType,
+      base64Length: base64.length,
+      size: buffer.byteLength,
+      name: file.file_path?.split('/').pop(),
+    }, 'Attachment created');
 
     return {
       attachment: {

@@ -96,7 +96,7 @@ function findGoodSplitPoint(text: string, limit: number): number {
  * Smart text chunking that preserves markdown structure
  * Uses the markdown-ir system for better splitting
  */
-function smartChunkText(
+function _smartChunkText(
   text: string,
   limit: number = TELEGRAM_MESSAGE_LIMIT
 ): string[] {
@@ -130,7 +130,7 @@ function smartChunkText(
 /**
  * Calculate approximate byte size (for media upload limits)
  */
-function calculateByteSize(text: string): number {
+function _calculateByteSize(text: string): number {
   // UTF-8 encoding: most chars are 1-3 bytes
   return new TextEncoder().encode(text).length;
 }
@@ -138,7 +138,7 @@ function calculateByteSize(text: string): number {
 /**
  * Truncate text with ellipsis if it exceeds limit
  */
-function truncateWithEllipsis(text: string, limit: number): string {
+function _truncateWithEllipsis(text: string, limit: number): string {
   if (text.length <= limit) return text;
 
   const ellipsis = '...';

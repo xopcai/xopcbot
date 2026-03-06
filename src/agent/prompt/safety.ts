@@ -5,7 +5,7 @@ import { Type, type Static } from '@sinclair/typebox';
 // Safety Schema (Internal)
 // =============================================================================
 
-const SafetyConfigSchema = Type.Object({
+const _SafetyConfigSchema = Type.Object({
   allowExternalActions: Type.Optional(Type.Boolean({ default: false })),
   allowDangerousOperations: Type.Optional(Type.Boolean({ default: false })),
   requireConfirmationForDestructive: Type.Optional(Type.Boolean({ default: true })),
@@ -15,7 +15,7 @@ const SafetyConfigSchema = Type.Object({
   maxShellTimeout: Type.Optional(Type.Number({ default: 300 })), // 5 minutes
 });
 
-type SafetyConfig = Static<typeof SafetyConfigSchema>;
+type _SafetyConfig = Static<typeof _SafetyConfigSchema>;
 
 // =============================================================================
 // Safety Levels (Internal)
@@ -40,7 +40,7 @@ interface SafetyRule {
 // Safety Guidelines (Internal)
 // =============================================================================
 
-const SAFETY_GUIDELINES: SafetyRule[] = [
+const _SAFETY_GUIDELINES: SafetyRule[] = [
   // Critical - Never do these
   {
     level: SafetyLevel.CRITICAL,

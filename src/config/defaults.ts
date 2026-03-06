@@ -70,7 +70,7 @@ interface ApplyModelDefaultsOptions {
   warn?: (message: string) => void;
 }
 
-function applyModelDefaults(
+function _applyModelDefaults(
   cfg: { models?: { providers?: Record<string, ModelProviderConfig> } },
   _options: ApplyModelDefaultsOptions = {},
 ): { models?: { providers?: Record<string, ModelProviderConfig> } } {
@@ -184,7 +184,7 @@ function applyModelDefaults(
 // Model aliases have been removed. This function is kept as a no-op
 // for any code that may still call it, but it just returns the input.
 
-function resolveModelAlias(alias: string): string | null {
+function _resolveModelAlias(alias: string): string | null {
   if (!alias || typeof alias !== 'string') {
     return null;
   }

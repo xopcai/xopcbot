@@ -498,7 +498,7 @@ export function buildSystemPrompt(
 /**
  * Build minimal system prompt for subagents/cron jobs (Internal)
  */
-function buildMinimalSystemPrompt(
+function _buildMinimalSystemPrompt(
   workspaceDir: string,
   bootstrapFiles: WorkspaceBootstrapFile[]
 ): string {
@@ -512,7 +512,7 @@ function buildMinimalSystemPrompt(
 /**
  * Get bootstrap file by name (Internal)
  */
-function getBootstrapFile(
+function _getBootstrapFile(
   bootstrapFiles: WorkspaceBootstrapFile[],
   name: string
 ): WorkspaceBootstrapFile | undefined {
@@ -522,7 +522,7 @@ function getBootstrapFile(
 /**
  * Check if specific bootstrap file exists and is loaded (Internal)
  */
-function hasBootstrapFile(
+function _hasBootstrapFile(
   bootstrapFiles: WorkspaceBootstrapFile[],
   name: string
 ): boolean {

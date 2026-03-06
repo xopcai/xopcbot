@@ -489,7 +489,7 @@ export function cleanOldLogs(keepDays: number = 7): {
 /**
  * Clean logs by size (keep total under limit)
  */
-function cleanBySize(maxTotalMB: number = 500): {
+function _cleanBySize(maxTotalMB: number = 500): {
   deleted: number;
   freedBytes: number;
   errors: string[];

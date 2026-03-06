@@ -4,6 +4,9 @@ set -e
 
 cd /root/xopc/xopcbot
 
+echo "🗑️ 卸载旧版本..."
+npm uninstall -g @xopcai/xopcbot
+
 echo "📦 构建中..."
 npm run build
 

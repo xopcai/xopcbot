@@ -346,6 +346,14 @@ export function parseInline(text: string, options: ParseOptions = {}): MarkdownN
 }
 
 /**
+ * Check if text appears to already be HTML (contains HTML tags)
+ */
+function looksLikeHtml(text: string): boolean {
+  // Simple heuristic: if text contains angle brackets that look like HTML tags
+  return /<[a-z][^>]*>/i.test(text);
+}
+
+/**
  * Render IR to Telegram HTML
  */
 export function renderToTelegramHtml(ir: MarkdownIR): string {
@@ -606,6 +614,10 @@ export function markdownToTelegramChunks(markdown: string, limit: number = 4000)
 export function renderTelegramHtmlText(text: string, options: { textMode?: 'markdown' | 'html' } = {}): string {
   const textMode = options.textMode ?? 'markdown';
   if (textMode === 'html') {
+    return text;
+  }
+  // If text already contains HTML tags, assume it's already HTML and return as-is
+  if (looksLikeHtml(text)) {
     return text;
   }
   const ir = parseMarkdownToIR(text, { linkify: true, enableSpoilers: true });

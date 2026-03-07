@@ -8,6 +8,7 @@ import { auth } from './middleware/auth.js';
 import { createAgentSSEHandler, createSendHandler, createEventsSSEHandler } from './sse.js';
 import type { GatewayService } from '../service.js';
 import type { Config } from '../../config/schema.js';
+import { getVoiceModelsConfig } from '../../config/voice.js';
 import { createLogger } from '../../utils/logger.js';
 import { queryLogs, getLogFiles, getLogLevels, getLogStats, getLogModules, LOG_DIR } from '../../utils/log-store.js';
 import type { LogLevel } from '../../utils/logger.types.js';
@@ -243,6 +244,12 @@ export function createHonoApp(config: HonoAppConfig): Hono {
       tts: config.tts,
     };
     return c.json({ ok: true, payload: { config: safeConfig } });
+  });
+
+  // GET /api/voice/models - Get available STT/TTS models
+  authenticated.get('/api/voice/models', (c) => {
+    const models = getVoiceModelsConfig();
+    return c.json({ ok: true, payload: { models } });
   });
 
   // PATCH /api/config - Update partial config

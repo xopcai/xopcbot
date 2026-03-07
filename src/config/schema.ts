@@ -384,7 +384,7 @@ export const ConfigSchema = z.object({
     provider: 'alibaba',
     trigger: 'auto',
     alibaba: {
-      model: 'qwen3-tts-flash',
+      model: 'qwen-tts',
       voice: 'Cherry',
     },
     openai: {

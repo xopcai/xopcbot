@@ -46,6 +46,23 @@ import { InboundDebounce, buildTelegramDebounceKey } from './debounce.js';
 import type { Message } from '@grammyjs/types';
 import type { Config } from '../../config/index.js';
 import { createTelegramCommandHandler } from './command-handler.js';
+<<<<<<< HEAD
+=======
+import { TelegramAccountManager } from './account-manager.js';
+import { createInboundProcessor } from './inbound-processor.js';
+import { createOutboundSender } from './outbound-sender.js';
+import { renderTelegramHtmlText } from '../format.js';
+import type { ProgressStage } from '../types.js';
+import { createLogger } from '../../utils/logger.js';
+// Import services for dependency injection into inbound-processor
+import {
+  normalizeAllowFromWithStore,
+  evaluateGroupBaseAccess,
+  resolveRequireMention,
+  hasBotMention,
+  removeBotMention,
+} from '../access-control.js';
+>>>>>>> 8b270f2 (fix(telegram): resolve Markdown formatting in outbound messages)
 import { generateSessionKey } from '../../commands/session-key.js';
 import { transcribe, isSTTAvailable } from '../../stt/index.js';
 import type { ProgressStage } from '../types.js';
@@ -1203,13 +1220,16 @@ export class TelegramChannelExtension implements ChannelExtension {
 
     return {
       update: (text: string) => {
-        // draftStream now handles formatTelegramMessage internally
-        draftStream.update(text);
+        // Convert Markdown to Telegram HTML before passing to draft stream.
+        // The draft stream is configured with parseMode='HTML', so it expects
+        // pre-converted HTML, not raw Markdown.
+        const html = renderTelegramHtmlText(text);
+        draftStream.update(html);
       },
       /** Update stream with progress stage indicator */
       updateProgress: (text: string, stage: ProgressStage, detail?: string) => {
-        // draftStream now handles formatTelegramMessage internally
-        draftStream.updateWithProgress(text, stage, detail);
+        const html = renderTelegramHtmlText(text);
+        draftStream.updateWithProgress(html, stage, detail);
       },
       /** Set progress stage without updating text */
       setProgress: (stage: ProgressStage, detail?: string) => {

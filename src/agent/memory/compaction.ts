@@ -1,4 +1,3 @@
-// Session Compaction - Compress old messages using dual-strategy approach
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
 import { complete, type Model, type Api, type UserMessage } from '@mariozechner/pi-ai';
 import { generateStructuredSummary, formatSummaryAsText, type ConversationSummary } from './summary-generator.js';
@@ -10,6 +9,12 @@ export interface CompactionResult {
   tokensAfter: number;
   compacted: boolean;
   structuredSummary?: ConversationSummary;
+  compactedUsage?: {
+    input: number;
+    output: number;
+    total: number;
+    cost?: number;
+  };
 }
 
 export interface CompactionConfig {
@@ -20,9 +25,10 @@ export interface CompactionConfig {
   minMessagesBeforeCompact: number;
   keepRecentMessages: number;
   summaryMaxTokens: number;
-  // Dual-strategy config
-  evictionWindow: number;    // Eviction window ratio (0.2 = 20% oldest messages)
-  retentionWindow: number;   // Retention window (keep last N turns)
+  evictionWindow: number;
+  retentionWindow: number;
+  preserveReasoning: boolean;
+  accumulateUsage: boolean;
 }
 
 const DEFAULT_CONFIG: CompactionConfig = {
@@ -33,11 +39,12 @@ const DEFAULT_CONFIG: CompactionConfig = {
   minMessagesBeforeCompact: 10,
   keepRecentMessages: 10,
   summaryMaxTokens: 500,
-  evictionWindow: 0.2,    // 20% oldest messages
-  retentionWindow: 6,     // Keep last 6 turns
+  evictionWindow: 0.2,
+  retentionWindow: 6,
+  preserveReasoning: true,
+  accumulateUsage: true,
 };
 
-// Rough token estimation (4 chars per token average)
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
@@ -57,16 +64,86 @@ function estimateMessageTokens(msg: AgentMessage): number {
   return estimateTokens(text) + 10;
 }
 
-/**
- * Find the index of the Nth turn from the end
- */
+export interface ReasoningDetails {
+  thinking?: string;
+  signature?: string;
+}
+
+export function extractLastReasoning(messages: AgentMessage[]): ReasoningDetails | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.role === 'assistant') {
+      const rd = (msg as unknown as { reasoning_details?: ReasoningDetails }).reasoning_details;
+      if (rd && (rd.thinking || rd.signature)) {
+        return rd;
+      }
+    }
+  }
+  return null;
+}
+
+export function injectReasoningIntoFirstAssistant(
+  messages: AgentMessage[],
+  reasoning: ReasoningDetails
+): void {
+  for (const msg of messages) {
+    if (msg.role === 'assistant') {
+      const existing = (msg as unknown as { reasoning_details?: ReasoningDetails }).reasoning_details;
+      if (!existing || (!existing.thinking && !existing.signature)) {
+        (msg as unknown as { reasoning_details?: ReasoningDetails }).reasoning_details = reasoning;
+      }
+      break;
+    }
+  }
+}
+
+export interface MessageUsage {
+  input: number;
+  output: number;
+  total: number;
+  cost?: number;
+}
+
+export function accumulateUsage(messages: AgentMessage[]): MessageUsage | undefined {
+  let totalInput = 0;
+  let totalOutput = 0;
+  let totalCost = 0;
+  let hasUsage = false;
+
+  for (const msg of messages) {
+    const usage = (msg as unknown as { usage?: MessageUsage }).usage;
+    if (usage) {
+      hasUsage = true;
+      totalInput += usage.input || 0;
+      totalOutput += usage.output || 0;
+      totalCost += usage.cost || 0;
+    }
+  }
+
+  if (!hasUsage) return undefined;
+
+  return {
+    input: totalInput,
+    output: totalOutput,
+    total: totalInput + totalOutput,
+    cost: totalCost > 0 ? totalCost : undefined,
+  };
+}
+
+export type DroppableMessage = AgentMessage & {
+  droppable?: boolean;
+};
+
+export function filterDroppableMessages(messages: AgentMessage[]): AgentMessage[] {
+  return messages.filter(msg => !(msg as DroppableMessage).droppable);
+}
+
 function findNthTurnFromEnd(messages: AgentMessage[], n: number): number {
   if (n <= 0) return messages.length;
   
   let turnsFound = 0;
   let lastRole: string | null = null;
   
-  // Iterate from end to beginning
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i];
     
@@ -79,13 +156,9 @@ function findNthTurnFromEnd(messages: AgentMessage[], n: number): number {
     lastRole = msg.role;
   }
   
-  return 0; // Return beginning if not enough turns
+  return 0;
 }
 
-/**
- * Calculate compaction range using dual-strategy approach
- * Takes the minimum of eviction and retention strategies (more conservative)
- */
 export function calculateCompactionRange(
   messages: AgentMessage[],
   config: CompactionConfig
@@ -96,18 +169,13 @@ export function calculateCompactionRange(
     return null;
   }
   
-  // Strategy 1: Eviction window - evict oldest N% of messages
   const evictionEnd = Math.floor(totalMessages * config.evictionWindow);
-  
-  // Strategy 2: Retention window - keep last N turns
   const retentionStart = findNthTurnFromEnd(messages, config.retentionWindow);
   const retentionEnd = retentionStart > 0 ? retentionStart - 1 : 0;
-  
-  // Take the smaller range (more conservative compaction)
   const compactionEnd = Math.min(evictionEnd, retentionEnd);
   
   if (compactionEnd <= 1) {
-    return null; // Not enough messages to compact
+    return null;
   }
   
   return { start: 0, end: compactionEnd };
@@ -117,15 +185,12 @@ export class SessionCompactor {
   private config: CompactionConfig;
   
   constructor(
-    config: Partial<CompactionConfig> = {},
+    config?: Partial<CompactionConfig>,
     private model?: Model<Api>
   ) {
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
 
-  /**
-   * Check if compaction is needed
-   */
   needsCompaction(
     messages: AgentMessage[],
     contextWindow: number
@@ -152,65 +217,69 @@ export class SessionCompactor {
     return { needed: false, reason: 'within_threshold' };
   }
 
-  /**
-   * Compact messages by summarizing old ones using dual-strategy
-   */
   async compact(
     messages: AgentMessage[],
     _instructions?: string
   ): Promise<CompactionResult> {
-    if (messages.length < this.config.minMessagesBeforeCompact) {
+    const effectiveMessages = filterDroppableMessages(messages);
+    
+    if (effectiveMessages.length < this.config.minMessagesBeforeCompact) {
       return {
         summary: '',
         firstKeptIndex: 0,
-        tokensBefore: this.estimateTotalTokens(messages),
-        tokensAfter: this.estimateTotalTokens(messages),
+        tokensBefore: this.estimateTotalTokens(effectiveMessages),
+        tokensAfter: this.estimateTotalTokens(effectiveMessages),
         compacted: false,
       };
     }
 
-    // Calculate compaction range using dual-strategy
-    const range = calculateCompactionRange(messages, this.config);
-    
-    // Fallback to simple strategy if dual-strategy returns null
-    const keepRecent = range ? messages.length - range.end : this.config.keepRecentMessages;
+    const range = calculateCompactionRange(effectiveMessages, this.config);
+    const keepRecent = range ? effectiveMessages.length - range.end : this.config.keepRecentMessages;
     const messagesToSummarize = range 
-      ? messages.slice(0, range.end)
-      : messages.slice(0, -keepRecent);
+      ? effectiveMessages.slice(0, range.end)
+      : effectiveMessages.slice(0, -keepRecent);
     const keptMessages = range 
-      ? messages.slice(range.end)
-      : messages.slice(-keepRecent);
+      ? effectiveMessages.slice(range.end)
+      : effectiveMessages.slice(-keepRecent);
 
-    // Generate summary based on mode
+    let preservedReasoning: ReasoningDetails | null = null;
+    if (this.config.preserveReasoning) {
+      preservedReasoning = extractLastReasoning(messagesToSummarize);
+      if (preservedReasoning) {
+        injectReasoningIntoFirstAssistant(keptMessages, preservedReasoning);
+      }
+    }
+
     const summary = await this.generateSummary(messagesToSummarize);
     const structuredSummary = this.config.mode === 'structured' 
       ? generateStructuredSummary(messagesToSummarize)
       : undefined;
 
-    const tokensBefore = this.estimateTotalTokens(messages);
+    const tokensBefore = this.estimateTotalTokens(effectiveMessages);
     const summaryTokens = estimateTokens(summary) + 20;
     const keptTokens = this.estimateTotalTokens(keptMessages);
     const tokensAfter = summaryTokens + keptTokens;
 
+    let compactedUsage: MessageUsage | undefined;
+    if (this.config.accumulateUsage) {
+      compactedUsage = accumulateUsage(messagesToSummarize);
+    }
+
     return {
       summary,
-      firstKeptIndex: keptMessages.length > 0 ? messages.length - keptMessages.length : 0,
+      firstKeptIndex: keptMessages.length > 0 ? effectiveMessages.length - keptMessages.length : 0,
       tokensBefore,
       tokensAfter,
       compacted: true,
       structuredSummary,
+      compactedUsage,
     };
   }
 
-  /**
-   * Generate summary based on configured mode
-   */
   private async generateSummary(messages: AgentMessage[]): Promise<string> {
-    // Use LLM if available and mode is abstractive/structured
     if (this.model && (this.config.mode === 'abstractive' || this.config.mode === 'structured')) {
       try {
         if (this.config.mode === 'structured') {
-          // Generate structured summary and format as text
           const structured = generateStructuredSummary(messages);
           return formatSummaryAsText(structured, true);
         } else {
@@ -221,14 +290,9 @@ export class SessionCompactor {
       }
     }
 
-    // Fallback to extractive summary
     return this.extractiveSummary(messages);
   }
 
-  /**
-   * LLM-based abstractive summary (natural language summary)
-   * @timeout 30 seconds
-   */
   private async llmAbstractiveSummary(messages: AgentMessage[]): Promise<string> {
     if (!this.model) {
       throw new Error('Model not available');
@@ -245,7 +309,6 @@ ${conversation}
 
 Summary:`;
 
-    // Create abort controller for timeout (30 seconds)
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
 
@@ -274,9 +337,6 @@ Summary:`;
     }
   }
 
-  /**
-   * Format messages for LLM consumption
-   */
   private formatMessages(messages: AgentMessage[]): string {
     return messages
       .map(m => {
@@ -289,9 +349,6 @@ Summary:`;
       .join('\n\n');
   }
 
-  /**
-   * Simple extractive summary (fallback when LLM unavailable)
-   */
   private extractiveSummary(messages: AgentMessage[]): string {
     const userMessages = messages
       .filter(m => m.role === 'user')
@@ -312,16 +369,10 @@ Summary:`;
     return `Previous conversation covered: ${userMessages.slice(0, 300)}...`;
   }
 
-  /**
-   * Estimate tokens for messages array
-   */
   estimateTotalTokens(messages: AgentMessage[]): number {
     return messages.reduce((sum, msg) => sum + estimateMessageTokens(msg), 0);
   }
 
-  /**
-   * Apply compaction result to messages
-   */
   applyCompaction(
     messages: AgentMessage[],
     result: CompactionResult
@@ -330,11 +381,15 @@ Summary:`;
       return messages;
     }
 
-    const summaryMessage: AgentMessage = {
+    const summaryMessage: AgentMessage & { usage?: MessageUsage } = {
       role: 'user',
       content: [{ type: 'text', text: `[Previous conversation summary]: ${result.summary}` }],
       timestamp: Date.now(),
     };
+
+    if (result.compactedUsage) {
+      summaryMessage.usage = result.compactedUsage;
+    }
 
     const keptMessages = messages.slice(result.firstKeptIndex);
     return [summaryMessage, ...keptMessages];

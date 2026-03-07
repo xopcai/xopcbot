@@ -52,16 +52,21 @@ export type { ToolErrorTrackerConfig, ToolFailureRecord } from './tool-error-tra
 export { RequestLimiter } from './request-limiter.js';
 export type { RequestLimiterConfig, RequestLimitResult } from './request-limiter.js';
 
-// Retry and timeout modules (P0 optimizations)
+// Retry module - use infra/retry for new code
 export { 
-  retryWithBackoff, 
-  DEFAULT_RETRY_CONFIG 
-} from './retry.js';
+  withRetry,
+  sleep,
+  resolveRetryConfig,
+  isRecoverableNetworkError,
+  createRetryRunner,
+  RECOVERABLE_ERROR_CODES,
+  RECOVERABLE_ERROR_NAMES,
+} from '../infra/retry.js';
 export type { 
-  RetryConfig, 
-  RetryResult, 
-  RetryStats 
-} from './retry.js';
+  RetryConfig,
+  RetryInfo,
+  RetryOptions,
+} from '../infra/retry.js';
 
 export { 
   executeWithTimeout, 

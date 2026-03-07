@@ -5,6 +5,7 @@
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { createLogger } from '../utils/logger.js';
+import { parseFrontmatter } from '../utils/frontmatter.js';
 import type { WorkspaceBootstrapFileName } from './workspace.js';
 
 const log = createLogger('AgentHelpers');
@@ -30,19 +31,10 @@ export interface TruncateResult {
 
 /**
  * Strip YAML front matter from markdown content.
- * Removes the ---
- * key: value
- * --- header if present.
+ * Uses parseFrontmatter from utils/frontmatter for consistent handling.
  */
-export function stripFrontMatter(content: string): string {
-  if (!content.startsWith('---')) {
-    return content;
-  }
-  const endIndex = content.indexOf('\n---', 3);
-  if (endIndex === -1) {
-    return content;
-  }
-  return content.slice(endIndex + 4).replace(/^\s+/, '');
+function stripFrontMatter(content: string): string {
+  return parseFrontmatter(content).content;
 }
 
 /**

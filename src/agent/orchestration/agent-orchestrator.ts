@@ -108,7 +108,10 @@ export class AgentOrchestrator {
    */
   private buildUserMessage(msg: InboundMessage): AgentMessage {
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
+=======
+>>>>>>> 30aee12 (fix(telegram): properly send images to LLM and improve message handling)
     // If there are attachments, build array content with text and images
     if (msg.attachments && msg.attachments.length > 0) {
       const messageContent: Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }> = [];
@@ -120,13 +123,21 @@ export class AgentOrchestrator {
 
       // Add image attachments
       for (const att of msg.attachments) {
+<<<<<<< HEAD
         if (att.type === 'image' || att.type === 'photo' || att.mimeType?.startsWith('image/')) {
+=======
+        if (att.type === 'image' || att.mimeType?.startsWith('image/')) {
+>>>>>>> 30aee12 (fix(telegram): properly send images to LLM and improve message handling)
           // Skip empty image data
           if (!att.data || att.data.length === 0) {
             log.warn({ type: att.type, name: att.name }, 'Empty image data, skipping');
             continue;
           }
+<<<<<<< HEAD
           const mimeType = att.mimeType || 'image/jpeg';  // Fixed: JPEG is Telegram's default
+=======
+          const mimeType = att.mimeType || 'image/png';
+>>>>>>> 30aee12 (fix(telegram): properly send images to LLM and improve message handling)
           messageContent.push({ type: 'image', data: att.data, mimeType });
         } else {
           // Non-image attachments: include as text description
@@ -135,6 +146,7 @@ export class AgentOrchestrator {
         }
       }
 
+<<<<<<< HEAD
       // If only images were added with no text, add a default prompt so the LLM
       // knows it should describe or analyze the image(s).
       const hasText = messageContent.some((item) => item.type === 'text');
@@ -153,6 +165,8 @@ export class AgentOrchestrator {
         };
       }
 
+=======
+>>>>>>> 30aee12 (fix(telegram): properly send images to LLM and improve message handling)
       return {
         role: 'user',
         content: messageContent,
@@ -161,7 +175,10 @@ export class AgentOrchestrator {
     }
 
     // No attachments - use simple string format (backward compatible)
+<<<<<<< HEAD
 >>>>>>> 5e3fe57 (fix(telegram): resolve image message delivery to AI model (v2))
+=======
+>>>>>>> 30aee12 (fix(telegram): properly send images to LLM and improve message handling)
     return {
       role: 'user',
       content: msg.content,

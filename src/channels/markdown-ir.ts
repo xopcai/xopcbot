@@ -348,9 +348,7 @@ export function parseInline(text: string, options: ParseOptions = {}): MarkdownN
   }
 
   return parseInlineRecursive(text);
-}
-
-/**
+}/**
  * Render IR to Telegram HTML
  */
 export function renderToTelegramHtml(ir: MarkdownIR): string {
@@ -613,6 +611,8 @@ export function renderTelegramHtmlText(text: string, options: { textMode?: 'mark
   if (textMode === 'html') {
     return text;
   }
+  // Always parse markdown to ensure proper conversion to Telegram HTML
+  // The markdown parser handles mixed content (markdown + HTML tags) correctly
   const ir = parseMarkdownToIR(text, { linkify: true, enableSpoilers: true });
   return renderToTelegramHtml(ir);
 }

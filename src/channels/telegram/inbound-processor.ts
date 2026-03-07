@@ -10,12 +10,24 @@
  * - Event publishing to bus
  */
 
-import type { Bot, Context } from 'grammy';
-import type { Message } from '@grammyjs/types';
+import type { Context } from 'grammy';
 import type { Config } from '../../config/schema.js';
 import type { MessageBus } from '../../bus/index.js';
 import type { TelegramAccountManager } from './account-manager.js';
 import { telegramUpdateDedupe, buildTelegramUpdateKey } from './dedupe.js';
+<<<<<<< HEAD
+=======
+import {
+  normalizeAllowFromWithStore,
+  evaluateGroupBaseAccess,
+  resolveRequireMention,
+  hasBotMention,
+  removeBotMention,
+} from '../access-control.js';
+import { generateSessionKey } from '../../commands/session-key.js';
+import { transcribe, isSTTAvailable } from '../../stt/index.js';
+import { getMimeType } from '../../utils/media.js';
+>>>>>>> 3579043 (fix: resolve lint warnings and test timing issue)
 import { createLogger } from '../../utils/logger.js';
 
 const log = createLogger('TelegramInboundProcessor');

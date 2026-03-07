@@ -513,6 +513,7 @@ export class TelegramChannelExtension implements ChannelExtension {
     this.bus = options.bus;
     this.config = options.config;
     
+<<<<<<< HEAD
     // Create command handler for shared state
     const commandHandler = createTelegramCommandHandler({
       bus: options.bus,
@@ -522,6 +523,9 @@ export class TelegramChannelExtension implements ChannelExtension {
     });
     
     this.messageProcessor = createMessageProcessor({
+=======
+    this.inboundProcessor = createInboundProcessor({
+>>>>>>> 3579043 (fix: resolve lint warnings and test timing issue)
       bus: options.bus,
       config: options.config,
       accountManager: this.accountManager,

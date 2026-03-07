@@ -78,10 +78,16 @@ describe('Retry Module', () => {
 
       expect(delays.length).toBe(2);
 <<<<<<< HEAD
+<<<<<<< HEAD
       // Second delay should be roughly 2x the first (with some jitter tolerance)
       // Jitter is ±25%, so second delay should be between 1.5x and 2.5x
+=======
+      // Second delay should be roughly 2x the first (with jitter tolerance)
+      // Jitter is ±25%, so second delay range: 1.5x to 2.5x of first delay
+      // Use wider tolerance (4x) to account for extreme jitter combinations
+>>>>>>> 3579043 (fix: resolve lint warnings and test timing issue)
       expect(delays[1]).toBeGreaterThan(delays[0] * 1.2);
-      expect(delays[1]).toBeLessThan(delays[0] * 3);
+      expect(delays[1]).toBeLessThan(delays[0] * 4);
     });
   });
 

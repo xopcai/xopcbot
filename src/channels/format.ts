@@ -1,77 +1,406 @@
 /**
  * Telegram Message Formatting Utilities
- * 
+ *
  * Converts Markdown to Telegram HTML format with proper escaping
  * and file reference protection
- * 
- * Now uses Markdown IR (Intermediate Representation) for robust parsing
- * Inspired by OpenClaw's approach
+ *
+ * Based on OpenClaw's implementation:
+ * https://github.com/mariozechner/openclaw/blob/main/src/telegram/format.ts
  */
 
+// MarkdownTableMode type definition (matches OpenClaw)
+export type MarkdownTableMode = "off" | "bullets" | "code";
 import {
-  parseMarkdownToIR,
-  renderToPlainText,
-  markdownToTelegramChunks,
-  renderTelegramHtmlText,
-  type FormattedChunk,
-} from './markdown-ir.js';
+  chunkMarkdownIR,
+  markdownToIR,
+  type MarkdownLinkSpan,
+  type MarkdownIR,
+} from "../markdown/ir.js";
+import { renderMarkdownWithMarkers } from "../markdown/render.js";
 
-// Re-export from markdown-ir for convenience
-export { markdownToTelegramChunks, renderTelegramHtmlText, type FormattedChunk };
+export type TelegramFormattedChunk = {
+  html: string;
+  text: string;
+};
 
-// File extensions that share TLDs and commonly appear in code/documentation
+export function escapeHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+export function escapeHtmlAttr(text: string): string {
+  return escapeHtml(text).replace(/"/g, "&quot;");
+}
+
+/**
+ * File extensions that share TLDs and commonly appear in code/documentation.
+ * These are wrapped in <code> tags to prevent Telegram from generating
+ * spurious domain registrar previews.
+ *
+ * Only includes extensions that are:
+ * 1. Commonly used as file extensions in code/docs
+ * 2. Rarely used as intentional domain references
+ *
+ * Excluded: .ai, .io, .tv, .fm (popular domain TLDs like x.ai, vercel.io, github.io)
+ */
 const FILE_EXTENSIONS_WITH_TLD = new Set([
-  'md', // Markdown (Moldova)
-  'go', // Go language
-  'py', // Python (Paraguay)
-  'pl', // Perl (Poland)
-  'sh', // Shell (Saint Helena)
-  'am', // Automake files (Armenia)
-  'at', // Assembly (Austria)
-  'be', // Backend files (Belgium)
-  'cc', // C++ source (Cocos Islands)
+  "md", // Markdown (Moldova) - very common in repos
+  "go", // Go language - common in Go projects
+  "py", // Python (Paraguay) - common in Python projects
+  "pl", // Perl (Poland) - common in Perl projects
+  "sh", // Shell (Saint Helena) - common for scripts
+  "am", // Automake files (Armenia)
+  "at", // Assembly (Austria)
+  "be", // Backend files (Belgium)
+  "cc", // C++ source (Cocos Islands)
 ]);
 
-/**
- * Escape HTML special characters
- */
-export function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-/**
- * Escape HTML attribute values
- */
-export function escapeHtmlAttr(text: string): string {
-  return escapeHtml(text).replace(/"/g, '&quot;');
-}
-
-/**
- * Detect if a link is an auto-linked file reference
- */
-function _isAutoLinkedFileRef(href: string, label: string): boolean {
-  const stripped = href.replace(/^https?:\/\//i, '');
+/** Detects when markdown-it linkify auto-generated a link from a bare filename (e.g. README.md → http://README.md) */
+function isAutoLinkedFileRef(href: string, label: string): boolean {
+  const stripped = href.replace(/^https?:\/\//i, "");
   if (stripped !== label) {
     return false;
   }
-  const dotIndex = label.lastIndexOf('.');
+  const dotIndex = label.lastIndexOf(".");
   if (dotIndex < 1) {
     return false;
   }
   const ext = label.slice(dotIndex + 1).toLowerCase();
-  return FILE_EXTENSIONS_WITH_TLD.has(ext);
+  if (!FILE_EXTENSIONS_WITH_TLD.has(ext)) {
+    return false;
+  }
+  // Reject if any path segment before the filename contains a dot (looks like a domain)
+  const segments = label.split("/");
+  if (segments.length > 1) {
+    for (let i = 0; i < segments.length - 1; i++) {
+      if (segments[i].includes(".")) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+function buildTelegramLink(link: MarkdownLinkSpan, text: string) {
+  const href = link.href.trim();
+  if (!href) {
+    return null;
+  }
+  if (link.start === link.end) {
+    return null;
+  }
+  // Suppress auto-linkified file references (e.g. README.md → http://README.md)
+  const label = text.slice(link.start, link.end);
+  if (isAutoLinkedFileRef(href, label)) {
+    return null;
+  }
+  const safeHref = escapeHtmlAttr(href);
+  return {
+    start: link.start,
+    end: link.end,
+    open: `<a href="${safeHref}">`,
+    close: "</a>",
+  };
+}
+
+function renderTelegramHtml(ir: MarkdownIR): string {
+  return renderMarkdownWithMarkers(ir, {
+    styleMarkers: {
+      bold: { open: "<b>", close: "</b>" },
+      italic: { open: "<i>", close: "</i>" },
+      strikethrough: { open: "<s>", close: "</s>" },
+      code: { open: "<code>", close: "</code>" },
+      code_block: { open: "<pre><code>", close: "</code></pre>" },
+      spoiler: { open: "<tg-spoiler>", close: "</tg-spoiler>" },
+      blockquote: { open: "<blockquote>", close: "</blockquote>" },
+    },
+    escapeText: escapeHtml,
+    buildLink: buildTelegramLink,
+  });
+}
+
+export function markdownToTelegramHtml(
+  markdown: string,
+  options: { tableMode?: MarkdownTableMode; wrapFileRefs?: boolean } = {},
+): string {
+  const ir = markdownToIR(markdown ?? "", {
+    linkify: true,
+    enableSpoilers: true,
+    headingStyle: "none",
+    blockquotePrefix: "",
+    tableMode: options.tableMode,
+  });
+  const html = renderTelegramHtml(ir);
+  // Apply file reference wrapping if requested (for chunked rendering)
+  if (options.wrapFileRefs !== false) {
+    return wrapFileReferencesInHtml(html);
+  }
+  return html;
 }
 
 /**
- * Simple Markdown to HTML converter for Telegram
- * @deprecated Use renderTelegramHtmlText() or markdownToTelegramChunks() instead
+ * Wraps standalone file references (with TLD extensions) in <code> tags.
+ * This prevents Telegram from treating them as URLs and generating
+ * irrelevant domain registrar previews.
+ *
+ * Runs AFTER markdown→HTML conversion to avoid modifying HTML attributes.
+ * Skips content inside <code>, <pre>, and <a> tags to avoid nesting issues.
  */
-export function markdownToTelegramHtml(markdown: string): string {
-  // Delegate to new IR-based implementation
-  return renderTelegramHtmlText(markdown);
+/** Escape regex metacharacters in a string */
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const FILE_EXTENSIONS_PATTERN = Array.from(FILE_EXTENSIONS_WITH_TLD).map(escapeRegex).join("|");
+const AUTO_LINKED_ANCHOR_PATTERN = /<a\s+href="https?:\/\/([^"]+)"[^\u003e]*\u003e\1<\/a>/gi;
+const FILE_REFERENCE_PATTERN = new RegExp(
+  `(^|[^a-zA-Z0-9_\\-/])([a-zA-Z0-9_.\-./]+\.(?:${FILE_EXTENSIONS_PATTERN}))(?=$|[^a-zA-Z0-9_\\-/])`,
+  "gi",
+);
+const ORPHANED_TLD_PATTERN = new RegExp(
+  `([^a-zA-Z0-9]|^)([A-Za-z]\.(?:${FILE_EXTENSIONS_PATTERN}))(?=[^a-zA-Z0-9/]|$)`,
+  "g",
+);
+const HTML_TAG_PATTERN = /(<\/?)([a-zA-Z][a-zA-Z0-9-]*)\b[^\u003e]*?>/gi;
+
+function wrapStandaloneFileRef(match: string, prefix: string, filename: string): string {
+  if (filename.startsWith("//")) {
+    return match;
+  }
+  if (/https?:\/\/$/i.test(prefix)) {
+    return match;
+  }
+  return `${prefix}<code>${escapeHtml(filename)}</code>`;
+}
+
+function wrapSegmentFileRefs(
+  text: string,
+  codeDepth: number,
+  preDepth: number,
+  anchorDepth: number,
+): string {
+  if (!text || codeDepth > 0 || preDepth > 0 || anchorDepth > 0) {
+    return text;
+  }
+  const wrappedStandalone = text.replace(FILE_REFERENCE_PATTERN, wrapStandaloneFileRef);
+  return wrappedStandalone.replace(ORPHANED_TLD_PATTERN, (match, prefix: string, tld: string) =>
+    prefix === ">" ? match : `${prefix}<code>${escapeHtml(tld)}</code>`,
+  );
+}
+
+export function wrapFileReferencesInHtml(html: string): string {
+  // Safety-net: de-linkify auto-generated anchors where href="http://<label>" (defense in depth for textMode: "html")
+  AUTO_LINKED_ANCHOR_PATTERN.lastIndex = 0;
+  const deLinkified = html.replace(AUTO_LINKED_ANCHOR_PATTERN, (_match, label: string) => {
+    if (!isAutoLinkedFileRef(`http://${label}`, label)) {
+      return _match;
+    }
+    return `<code>${escapeHtml(label)}</code>`;
+  });
+
+  // Track nesting depth for tags that should not be modified
+  let codeDepth = 0;
+  let preDepth = 0;
+  let anchorDepth = 0;
+  let result = "";
+  let lastIndex = 0;
+
+  // Process tags token-by-token so we can skip protected regions while wrapping plain text.
+  HTML_TAG_PATTERN.lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = HTML_TAG_PATTERN.exec(deLinkified)) !== null) {
+    const tagStart = match.index;
+    const tagEnd = HTML_TAG_PATTERN.lastIndex;
+    const isClosing = match[1] === "</";
+    const tagName = match[2].toLowerCase();
+
+    // Process text before this tag
+    const textBefore = deLinkified.slice(lastIndex, tagStart);
+    result += wrapSegmentFileRefs(textBefore, codeDepth, preDepth, anchorDepth);
+
+    // Update tag depth (clamp at 0 for malformed HTML with stray closing tags)
+    if (tagName === "code") {
+      codeDepth = isClosing ? Math.max(0, codeDepth - 1) : codeDepth + 1;
+    } else if (tagName === "pre") {
+      preDepth = isClosing ? Math.max(0, preDepth - 1) : preDepth + 1;
+    } else if (tagName === "a") {
+      anchorDepth = isClosing ? Math.max(0, anchorDepth - 1) : anchorDepth + 1;
+    }
+
+    // Add the tag itself
+    result += deLinkified.slice(tagStart, tagEnd);
+    lastIndex = tagEnd;
+  }
+
+  // Process remaining text
+  const remainingText = deLinkified.slice(lastIndex);
+  result += wrapSegmentFileRefs(remainingText, codeDepth, preDepth, anchorDepth);
+
+  return result;
+}
+
+export function renderTelegramHtmlText(
+  text: string,
+  options: { textMode?: "markdown" | "html"; tableMode?: MarkdownTableMode; wrapFileRefs?: boolean } = {},
+): string {
+  const textMode = options.textMode ?? "markdown";
+  if (textMode === "html") {
+    // For HTML mode, trust caller markup - don't modify
+    return text;
+  }
+  // markdownToTelegramHtml already wraps file references by default
+  return markdownToTelegramHtml(text, { 
+    tableMode: options.tableMode,
+    wrapFileRefs: options.wrapFileRefs,
+  });
+}
+
+function splitTelegramChunkByHtmlLimit(
+  chunk: MarkdownIR,
+  htmlLimit: number,
+  renderedHtmlLength: number,
+): MarkdownIR[] {
+  const currentTextLength = chunk.text.length;
+  if (currentTextLength <= 1) {
+    return [chunk];
+  }
+  const proportionalLimit = Math.floor(
+    (currentTextLength * htmlLimit) / Math.max(renderedHtmlLength, 1),
+  );
+  const candidateLimit = Math.min(currentTextLength - 1, proportionalLimit);
+  const splitLimit =
+    Number.isFinite(candidateLimit) && candidateLimit > 0
+      ? candidateLimit
+      : Math.max(1, Math.floor(currentTextLength / 2));
+  const split = splitMarkdownIRPreserveWhitespace(chunk, splitLimit);
+  if (split.length > 1) {
+    return split;
+  }
+  return splitMarkdownIRPreserveWhitespace(chunk, Math.max(1, Math.floor(currentTextLength / 2)));
+}
+
+function sliceStyleSpans(
+  styles: MarkdownIR["styles"],
+  start: number,
+  end: number,
+): MarkdownIR["styles"] {
+  return styles.flatMap((span) => {
+    if (span.end <= start || span.start >= end) {
+      return [];
+    }
+    const nextStart = Math.max(span.start, start) - start;
+    const nextEnd = Math.min(span.end, end) - start;
+    if (nextEnd <= nextStart) {
+      return [];
+    }
+    return [{ ...span, start: nextStart, end: nextEnd }];
+  });
+}
+
+function sliceLinkSpans(
+  links: MarkdownIR["links"],
+  start: number,
+  end: number,
+): MarkdownIR["links"] {
+  return links.flatMap((link) => {
+    if (link.end <= start || link.start >= end) {
+      return [];
+    }
+    const nextStart = Math.max(link.start, start) - start;
+    const nextEnd = Math.min(link.end, end) - start;
+    if (nextEnd <= nextStart) {
+      return [];
+    }
+    return [{ ...link, start: nextStart, end: nextEnd }];
+  });
+}
+
+function splitMarkdownIRPreserveWhitespace(ir: MarkdownIR, limit: number): MarkdownIR[] {
+  if (!ir.text) {
+    return [];
+  }
+  const normalizedLimit = Math.max(1, Math.floor(limit));
+  if (normalizedLimit <= 0 || ir.text.length <= normalizedLimit) {
+    return [ir];
+  }
+  const chunks: MarkdownIR[] = [];
+  let cursor = 0;
+  while (cursor < ir.text.length) {
+    const end = Math.min(ir.text.length, cursor + normalizedLimit);
+    chunks.push({
+      text: ir.text.slice(cursor, end),
+      styles: sliceStyleSpans(ir.styles, cursor, end),
+      links: sliceLinkSpans(ir.links, cursor, end),
+    });
+    cursor = end;
+  }
+  return chunks;
+}
+
+function renderTelegramChunksWithinHtmlLimit(
+  ir: MarkdownIR,
+  limit: number,
+): TelegramFormattedChunk[] {
+  const normalizedLimit = Math.max(1, Math.floor(limit));
+  const pending = chunkMarkdownIR(ir, normalizedLimit);
+  const rendered: TelegramFormattedChunk[] = [];
+  while (pending.length > 0) {
+    const chunk = pending.shift();
+    if (!chunk) {
+      continue;
+    }
+    const html = wrapFileReferencesInHtml(renderTelegramHtml(chunk));
+    if (html.length <= normalizedLimit || chunk.text.length <= 1) {
+      rendered.push({ html, text: chunk.text });
+      continue;
+    }
+    const split = splitTelegramChunkByHtmlLimit(chunk, normalizedLimit, html.length);
+    if (split.length <= 1) {
+      // Worst-case safety: avoid retry loops, deliver the chunk as-is.
+      rendered.push({ html, text: chunk.text });
+      continue;
+    }
+    pending.unshift(...split);
+  }
+  return rendered;
+}
+
+export function markdownToTelegramChunks(
+  markdown: string,
+  limit: number,
+  options: { tableMode?: MarkdownTableMode } = {},
+): TelegramFormattedChunk[] {
+  const ir = markdownToIR(markdown ?? "", {
+    linkify: true,
+    enableSpoilers: true,
+    headingStyle: "none",
+    blockquotePrefix: "",
+    tableMode: options.tableMode,
+  });
+  return renderTelegramChunksWithinHtmlLimit(ir, limit);
+}
+
+export function markdownToTelegramHtmlChunks(markdown: string, limit: number): string[] {
+  return markdownToTelegramChunks(markdown, limit).map((chunk) => chunk.html);
+}
+
+/**
+ * Format message for Telegram with proper HTML and file reference protection
+ */
+export function formatTelegramMessage(
+  markdown: string,
+  options: { wrapFileRefs?: boolean; textMode?: "markdown" | "html" } = {},
+): { html: string; text: string } {
+  // Pass wrapFileRefs to renderTelegramHtmlText which will pass it to markdownToTelegramHtml
+  const html = renderTelegramHtmlText(markdown, { 
+    textMode: options.textMode,
+    wrapFileRefs: options.wrapFileRefs,
+  });
+
+  return {
+    html,
+    text: markdown,
+  };
 }
 
 /**
@@ -79,276 +408,9 @@ export function markdownToTelegramHtml(markdown: string): string {
  * Used for fallback when HTML parsing fails
  */
 export function markdownToPlainText(markdown: string): string {
-  const ir = parseMarkdownToIR(markdown, { linkify: true, enableSpoilers: true });
-  return renderToPlainText(ir);
-}
-
-// ... rest of the file with wrapFileReferencesInHtml, fixMalformedHtml, etc.
-
-/**
- * Wrap standalone file references in &lt;code&gt; tags
- * Prevents Telegram from generating domain registrar previews
- */
-export function wrapFileReferencesInHtml(html: string): string {
-  // Track nesting depth for tags that should not be modified
-  let codeDepth = 0;
-  let preDepth = 0;
-  let anchorDepth = 0;
-  let result = '';
-  let lastIndex = 0;
-
-  const HTML_TAG_PATTERN = /(<\/?)([a-zA-Z][a-zA-Z0-9-]*)\b[^>]*?>/gi;
-  let match: RegExpExecArray | null;
-
-  while ((match = HTML_TAG_PATTERN.exec(html)) !== null) {
-    const tagStart = match.index;
-    const tagEnd = tagStart + match[0].length;
-    const tagName = match[2].toLowerCase();
-    const isClosing = match[1] === '</';
-
-    // Process text before this tag
-    if (tagStart > lastIndex) {
-      const textSegment = html.slice(lastIndex, tagStart);
-      result += wrapSegmentFileRefs(textSegment, codeDepth, preDepth, anchorDepth);
-    }
-
-    // Update nesting depth
-    if (tagName === 'code') {
-      codeDepth += isClosing ? -1 : 1;
-    } else if (tagName === 'pre') {
-      preDepth += isClosing ? -1 : 1;
-    } else if (tagName === 'a') {
-      anchorDepth += isClosing ? -1 : 1;
-    }
-
-    // Add the tag itself
-    result += match[0];
-    lastIndex = tagEnd;
-  }
-
-  // Process remaining text after last tag
-  if (lastIndex < html.length) {
-    const textSegment = html.slice(lastIndex);
-    result += wrapSegmentFileRefs(textSegment, codeDepth, preDepth, anchorDepth);
-  }
-
-  return result;
-}
-
-/**
- * Wrap file references in a text segment (respecting nesting depth)
- */
-function wrapSegmentFileRefs(
-  text: string,
-  codeDepth: number,
-  preDepth: number,
-  anchorDepth: number
-): string {
-  if (!text || codeDepth > 0 || preDepth > 0 || anchorDepth > 0) {
-    return text;
-  }
-
-  const FILE_EXTENSIONS_PATTERN = Array.from(FILE_EXTENSIONS_WITH_TLD).join('|');
-  const FILE_REFERENCE_PATTERN = new RegExp(
-    `(^|[^a-zA-Z0-9_\\-/])([a-zA-Z0-9_.\\-./]+\\.(?:${FILE_EXTENSIONS_PATTERN}))(?=$|[^a-zA-Z0-9_\\-/])`,
-    'gi'
-  );
-
-  return text.replace(FILE_REFERENCE_PATTERN, (match, prefix, filename) => {
-    if (filename.startsWith('//')) {
-      return match;
-    }
-    if (/https?:\/\/$/i.test(prefix)) {
-      return match;
-    }
-    return `${prefix}<code>${escapeHtml(filename)}</code>`;
-  });
-}
-
-/**
- * Fix malformed HTML tags by ensuring proper nesting
- * This handles cases where LLM generates invalid HTML like:
- * - <code>git<i>diff</code> (i tag not closed)
- * - <code>git</i>log</code> (i tag closed but not opened in context)
- */
-function _fixMalformedHtml(html: string): string {
-  const result: string[] = [];
-  const openTags: string[] = [];
-  let i = 0;
-
-  // Tags that are self-closing or should not be tracked
-  const voidElements = new Set([
-    'br', 'hr', 'img', 'input', 'link', 'meta', 'area', 'base', 'col', 'embed',
-    'param', 'source', 'track', 'wbr'
-  ]);
-
-  // Tags that can be nested (inline elements)
-  const inlineTags = new Set([
-    'a', 'b', 'i', 'code', 's', 'strike', 'del', 'u', 'em', 'strong', 'span', 'tg-spoiler'
-  ]);
-
-  while (i < html.length) {
-    // Check if we're at a tag
-    if (html[i] === '<' && i + 1 < html.length && html[i + 1] !== '!') {
-      // Find the end of the tag
-      let tagEnd = html.indexOf('>', i);
-      if (tagEnd === -1) {
-        // No closing > found, treat as literal text
-        result.push(html.slice(i));
-        break;
-      }
-
-      const fullTag = html.slice(i, tagEnd + 1);
-
-      // Skip HTML comments and DOCTYPE
-      if (fullTag.startsWith('<!') || fullTag.startsWith('<!--')) {
-        // Skip until end of comment
-        const commentEnd = html.indexOf('-->', i);
-        if (commentEnd !== -1) {
-          i = commentEnd + 3;
-        } else {
-          result.push(html.slice(i));
-          break;
-        }
-        continue;
-      }
-
-      // Check if it's a closing tag
-      if (fullTag.startsWith('</')) {
-        const tagName = fullTag.slice(2, -1).trim().toLowerCase().split(/\s/)[0];
-
-        if (voidElements.has(tagName)) {
-          // Invalid closing tag for void element, escape it
-          result.push(escapeHtml(fullTag));
-        } else {
-          // Find and close the matching tag
-          const lastIndex = openTags.lastIndexOf(tagName);
-          if (lastIndex !== -1) {
-            // Found matching tag, close all tags opened after it
-            while (openTags.length > lastIndex + 1) {
-              const tagToClose = openTags.pop()!;
-              result.push(`</${tagToClose}>`);
-            }
-            // Close the matching tag
-            openTags.pop();
-            result.push(fullTag);
-          } else {
-            // No matching open tag, escape the closing tag
-            result.push(escapeHtml(fullTag));
-          }
-        }
-      } else if (fullTag.endsWith('/>') || voidElements.has(fullTag.slice(1, -1).trim().toLowerCase().split(/\s/)[0])) {
-        // Self-closing tag or void element
-        result.push(fullTag);
-      } else {
-        // Opening tag
-        const tagName = fullTag.slice(1, -1).trim().toLowerCase().split(/\s/)[0];
-
-        if (tagName && (inlineTags.has(tagName) || tagName === 'pre' || tagName === 'blockquote')) {
-          // Track inline/nestableable tags
-          openTags.push(tagName);
-        }
-        result.push(fullTag);
-      }
-
-      i = tagEnd + 1;
-    } else {
-      // Regular text
-      result.push(html[i]);
-      i++;
-    }
-  }
-
-  // Close any remaining open tags
-  while (openTags.length > 0) {
-    result.push(`</${openTags.pop()}>`);
-  }
-
-  return result.join('');
-}
-
-/**
- * Validate HTML string for Telegram parse_mode
- * Returns true if the HTML appears to be valid
- */
-export function isValidTelegramHtml(html: string): boolean {
-  const voidElements = new Set([
-    'br', 'hr', 'img', 'input', 'link', 'meta', 'area', 'base', 'col', 'embed',
-    'param', 'source', 'track', 'wbr'
-  ]);
-
-  const openTags: string[] = [];
-  let i = 0;
-
-  while (i < html.length) {
-    if (html[i] === '<' && i + 1 < html.length && html[i + 1] !== '!') {
-      let tagEnd = html.indexOf('>', i);
-      if (tagEnd === -1) return false;
-
-      const fullTag = html.slice(i, tagEnd + 1);
-
-      // Skip comments
-      if (fullTag.startsWith('<!') || fullTag.startsWith('<!--')) {
-        const commentEnd = html.indexOf('-->', i);
-        if (commentEnd !== -1) {
-          i = commentEnd + 3;
-        } else {
-          return false;
-        }
-        continue;
-      }
-
-      const isClosing = fullTag.startsWith('</');
-      const tagName = fullTag.slice(isClosing ? 2 : 1, -1).trim().toLowerCase().split(/\s/)[0];
-
-      if (!tagName) {
-        i = tagEnd + 1;
-        continue;
-      }
-
-      if (voidElements.has(tagName)) {
-        // Void elements are self-closing, no need to track
-      } else if (isClosing) {
-        const lastIndex = openTags.lastIndexOf(tagName);
-        if (lastIndex === -1) {
-          // Closing tag without matching opening
-          return false;
-        }
-        // Close all tags between lastIndex and end
-        openTags.splice(lastIndex + 1);
-        openTags.pop();
-      } else {
-        openTags.push(tagName);
-      }
-
-      i = tagEnd + 1;
-    } else {
-      i++;
-    }
-  }
-
-  return openTags.length === 0;
-}
-
-/**
- * Format message for Telegram with proper HTML and file reference protection
- * Now uses Markdown IR for robust parsing
- */
-export function formatTelegramMessage(
-  markdown: string,
-  options: { wrapFileRefs?: boolean; textMode?: 'markdown' | 'html' } = {}
-): { html: string; text: string } {
-  const html = renderTelegramHtmlText(markdown, { textMode: options.textMode });
-  
-  // Wrap file references if enabled
-  const finalHtml = options.wrapFileRefs !== false
-    ? wrapFileReferencesInHtml(html)
-    : html;
-
-  return {
-    html: finalHtml,
-    text: markdown,
-  };
+  const ir = markdownToIR(markdown, { linkify: true, enableSpoilers: true });
+  // Simple plain text rendering - just extract the text
+  return ir.text;
 }
 
 /**
@@ -357,11 +419,11 @@ export function formatTelegramMessage(
  */
 export function splitTelegramMessage(
   text: string,
-  maxChars: number = 4000
+  maxChars: number = 4000,
 ): string[] {
   // Delegate to new IR-based chunking
   const chunks = markdownToTelegramChunks(text, maxChars);
-  return chunks.map(c => c.html);
+  return chunks.map((c) => c.html);
 }
 
 /**
@@ -370,7 +432,7 @@ export function splitTelegramMessage(
  */
 export function splitTelegramMessageSmart(
   markdown: string,
-  maxChars: number = 4000
-): FormattedChunk[] {
+  maxChars: number = 4000,
+): TelegramFormattedChunk[] {
   return markdownToTelegramChunks(markdown, maxChars);
 }

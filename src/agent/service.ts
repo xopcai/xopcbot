@@ -50,10 +50,12 @@ export interface AgentServiceConfig {
   maxTaskDurationMs?: number;
 }
 
-interface AgentContext {
+export interface AgentContext {
   channel: string;
   chatId: string;
   sessionKey: string;
+  senderId?: string;
+  isGroup?: boolean;
 }
 
 /**

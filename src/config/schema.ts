@@ -117,6 +117,9 @@ export const TelegramAccountConfigSchema = z.object({
   streamMode: z.enum(['off', 'partial', 'block']).default('partial'),
   proxy: z.string().optional(),
   apiRoot: z.string().optional(),
+  // Markdown rendering options
+  tableMode: z.enum(['off', 'bullets', 'code']).optional(),
+  linkPreview: z.boolean().optional(),
 });
 
 export const TelegramConfigSchema = z.object({
@@ -128,6 +131,9 @@ export const TelegramConfigSchema = z.object({
   accounts: z.record(z.string(), TelegramAccountConfigSchema).optional(),
   dmPolicy: z.enum(['pairing', 'allowlist', 'open', 'disabled']).default('pairing'),
   groupPolicy: z.enum(['open', 'disabled', 'allowlist']).default('open'),
+  // Markdown rendering options
+  tableMode: z.enum(['off', 'bullets', 'code']).optional(),
+  linkPreview: z.boolean().optional(),
 });
 
 export const ChannelsConfigSchema = z.object({

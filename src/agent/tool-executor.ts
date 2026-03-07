@@ -10,7 +10,7 @@
 import type { AgentTool, AgentToolResult } from '@mariozechner/pi-agent-core';
 import { createLogger } from '../utils/logger.js';
 import { executeWithTimeout, TimeoutError } from './timeout-wrapper.js';
-import { retryWithBackoff } from './retry.js';
+import { withRetry } from '../infra/retry.js';
 
 const log = createLogger('ToolExecutor');
 
@@ -116,15 +116,14 @@ export async function executeToolWithProtection(
     const originalOperation = operation;
     
     operation = async () => {
-      return retryWithBackoff(
+      return withRetry(
         originalOperation,
         {
-          maxAttempts: fullConfig.maxRetries + 1,
-          initialDelayMs: fullConfig.retryDelayMs,
-          backoffFactor: 2,
-          onRetry: (error, attempt, delayMs) => {
+          attempts: fullConfig.maxRetries + 1,
+          minDelayMs: fullConfig.retryDelayMs,
+          onRetry: (info) => {
             log.warn(
-              { tool: toolName, attempt, delayMs, error: error.message },
+              { tool: toolName, attempt: info.attempt, delayMs: info.delayMs, error: info.error },
               'Tool execution failed, retrying'
             );
           },

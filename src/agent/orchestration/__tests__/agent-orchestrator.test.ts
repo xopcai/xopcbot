@@ -353,6 +353,10 @@ describe('AgentOrchestrator', () => {
         expect(content).toHaveLength(2);
         expect(content[0]).toEqual({ type: 'text', text: 'Please analyze the image(s) I sent.' });
         expect(content[1]).toEqual({ type: 'image', data: 'imagedata', mimeType: 'image/jpeg' });
+<<<<<<< HEAD
+=======
+      });
+>>>>>>> ddf4f0e (test: fix tests after code cleanup)
       });
     });
 

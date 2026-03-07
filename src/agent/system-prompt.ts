@@ -498,7 +498,11 @@ export function buildSystemPrompt(
 /**
  * Build minimal system prompt for subagents/cron jobs
  */
+<<<<<<< HEAD
 export function buildMinimalSystemPrompt(
+=======
+function _buildMinimalSystemPrompt(
+>>>>>>> d0fc054 (fix: resolve unused variable warnings in lint)
   workspaceDir: string,
   bootstrapFiles: WorkspaceBootstrapFile[]
 ): string {
@@ -512,7 +516,11 @@ export function buildMinimalSystemPrompt(
 /**
  * Get bootstrap file by name
  */
+<<<<<<< HEAD
 export function getBootstrapFile(
+=======
+function _getBootstrapFile(
+>>>>>>> d0fc054 (fix: resolve unused variable warnings in lint)
   bootstrapFiles: WorkspaceBootstrapFile[],
   name: string
 ): WorkspaceBootstrapFile | undefined {
@@ -522,7 +530,11 @@ export function getBootstrapFile(
 /**
  * Check if specific bootstrap file exists and is loaded
  */
+<<<<<<< HEAD
 export function hasBootstrapFile(
+=======
+function _hasBootstrapFile(
+>>>>>>> d0fc054 (fix: resolve unused variable warnings in lint)
   bootstrapFiles: WorkspaceBootstrapFile[],
   name: string
 ): boolean {

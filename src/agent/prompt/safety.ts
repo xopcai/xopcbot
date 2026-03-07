@@ -5,7 +5,11 @@ import { Type, type Static } from '@sinclair/typebox';
 // Safety Schema
 // =============================================================================
 
+<<<<<<< HEAD
 export const SafetyConfigSchema = Type.Object({
+=======
+const _SafetyConfigSchema = Type.Object({
+>>>>>>> d0fc054 (fix: resolve unused variable warnings in lint)
   allowExternalActions: Type.Optional(Type.Boolean({ default: false })),
   allowDangerousOperations: Type.Optional(Type.Boolean({ default: false })),
   requireConfirmationForDestructive: Type.Optional(Type.Boolean({ default: true })),
@@ -15,7 +19,11 @@ export const SafetyConfigSchema = Type.Object({
   maxShellTimeout: Type.Optional(Type.Number({ default: 300 })), // 5 minutes
 });
 
+<<<<<<< HEAD
 export type SafetyConfig = Static<typeof SafetyConfigSchema>;
+=======
+type _SafetyConfig = Static<typeof _SafetyConfigSchema>;
+>>>>>>> d0fc054 (fix: resolve unused variable warnings in lint)
 
 // =============================================================================
 // Safety Levels
@@ -40,7 +48,11 @@ export interface SafetyRule {
 // Safety Guidelines
 // =============================================================================
 
+<<<<<<< HEAD
 export const SAFETY_GUIDELINES: SafetyRule[] = [
+=======
+const _SAFETY_GUIDELINES: SafetyRule[] = [
+>>>>>>> d0fc054 (fix: resolve unused variable warnings in lint)
   // Critical - Never do these
   {
     level: SafetyLevel.CRITICAL,

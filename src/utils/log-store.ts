@@ -489,7 +489,11 @@ export function cleanOldLogs(keepDays: number = 7): {
 /**
  * Clean logs by size (keep total under limit)
  */
+<<<<<<< HEAD
 export function cleanBySize(maxTotalMB: number = 500): {
+=======
+function _cleanBySize(maxTotalMB: number = 500): {
+>>>>>>> d0fc054 (fix: resolve unused variable warnings in lint)
   deleted: number;
   freedBytes: number;
   errors: string[];

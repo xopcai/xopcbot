@@ -62,11 +62,17 @@ import {
   hasBotMention,
   removeBotMention,
 } from '../access-control.js';
+<<<<<<< HEAD
 >>>>>>> 8b270f2 (fix(telegram): resolve Markdown formatting in outbound messages)
 import { generateSessionKey } from '../../commands/session-key.js';
 import { transcribe, isSTTAvailable } from '../../stt/index.js';
 import type { ProgressStage } from '../types.js';
 import { speak, isTTSAvailable } from '../../tts/index.js';
+=======
+import { generateSessionKey } from '../../commands/session-key.js';
+import { transcribe, isSTTAvailable } from '../../stt/index.js';
+import { getMimeType } from '../../utils/media.js';
+>>>>>>> bf21ebc (refactor(telegram): improve inbound-processor with DI and reduced nesting)
 
 const log = createLogger('TelegramExtension');
 
@@ -519,7 +525,33 @@ export class TelegramChannelExtension implements ChannelExtension {
       bus: options.bus,
       config: options.config,
       accountManager: this.accountManager,
+<<<<<<< HEAD
       _commandHandler: commandHandler,
+=======
+      // Inject external services for testability
+      accessControl: {
+        normalizeAllowFromWithStore,
+        evaluateGroupBaseAccess,
+        resolveRequireMention,
+        hasBotMention,
+        removeBotMention,
+      },
+      sessionKeyService: {
+        generateSessionKey,
+      },
+      sttService: {
+        transcribe,
+        isSTTAvailable,
+      },
+      mediaUtils: {
+        getMimeType,
+      },
+    });
+
+    this.outboundSender = createOutboundSender({
+      accountManager: this.accountManager,
+      config: options.config,
+>>>>>>> bf21ebc (refactor(telegram): improve inbound-processor with DI and reduced nesting)
     });
 
     const telegramConfig = options.config.channels?.telegram;

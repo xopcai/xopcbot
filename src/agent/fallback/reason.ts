@@ -6,25 +6,25 @@ export type FailoverReason =
   | 'timeout'
   | 'unknown';
 
-function isRateLimitErrorMessage(raw: string): boolean {
+export function isRateLimitErrorMessage(raw: string): boolean {
   return raw.toLowerCase().includes('rate limit') || /429/i.test(raw);
 }
 
-function isTimeoutErrorMessage(raw: string): boolean {
+export function isTimeoutErrorMessage(raw: string): boolean {
   return raw.toLowerCase().includes('timeout') || raw.toLowerCase().includes('timed out');
 }
 
-function isBillingErrorMessage(raw: string): boolean {
+export function isBillingErrorMessage(raw: string): boolean {
   const lower = raw.toLowerCase();
   return lower.includes('402') || lower.includes('billing') || lower.includes('insufficient credit');
 }
 
-function isAuthErrorMessage(raw: string): boolean {
+export function isAuthErrorMessage(raw: string): boolean {
   const lower = raw.toLowerCase();
   return lower.includes('401') || lower.includes('403') || lower.includes('unauthorized') || lower.includes('invalid api key');
 }
 
-function isFormatErrorMessage(raw: string): boolean {
+export function isFormatErrorMessage(raw: string): boolean {
   return raw.toLowerCase().includes('invalid request format') || raw.toLowerCase().includes('tool_use.id');
 }
 

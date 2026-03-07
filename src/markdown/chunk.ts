@@ -14,14 +14,10 @@ import { findFenceSpanAt, isSafeFenceBreak, parseFenceSpans } from "./fences.js"
 
 export type ChunkMode = "length" | "newline";
 
-<<<<<<< HEAD
 // Constants for reference (OpenClaw compatibility)
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const DEFAULT_CHUNK_LIMIT = 4000;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-=======
-const DEFAULT_CHUNK_LIMIT = 4000;
->>>>>>> e3a1f8f (refactor(channels): implement OpenClaw-based Markdown to Telegram conversion)
 const DEFAULT_CHUNK_MODE: ChunkMode = "length";
 
 /**

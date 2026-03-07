@@ -70,15 +70,7 @@ interface ApplyModelDefaultsOptions {
   warn?: (message: string) => void;
 }
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-export function applyModelDefaults(
-=======
 function _applyModelDefaults(
->>>>>>> d0fc054 (fix: resolve unused variable warnings in lint)
-=======
-function applyModelDefaults(
->>>>>>> 18a9904 (refactor: aggressive cleanup of unused code (Occam's razor))
   cfg: { models?: { providers?: Record<string, ModelProviderConfig> } },
   _options: ApplyModelDefaultsOptions = {},
 ): { models?: { providers?: Record<string, ModelProviderConfig> } } {
@@ -192,15 +184,7 @@ function applyModelDefaults(
 // Model aliases have been removed. This function is kept as a no-op
 // for any code that may still call it, but it just returns the input.
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-export function resolveModelAlias(alias: string): string | null {
-=======
 function _resolveModelAlias(alias: string): string | null {
->>>>>>> d0fc054 (fix: resolve unused variable warnings in lint)
-=======
-function resolveModelAlias(alias: string): string | null {
->>>>>>> 18a9904 (refactor: aggressive cleanup of unused code (Occam's razor))
   if (!alias || typeof alias !== 'string') {
     return null;
   }

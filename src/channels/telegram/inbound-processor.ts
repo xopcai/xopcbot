@@ -10,24 +10,12 @@
  * - Event publishing to bus
  */
 
-import type { Context } from 'grammy';
+import type { Bot, Context } from 'grammy';
+import type { Message } from '@grammyjs/types';
 import type { Config } from '../../config/schema.js';
 import type { MessageBus } from '../../bus/index.js';
 import type { TelegramAccountManager } from './account-manager.js';
 import { telegramUpdateDedupe, buildTelegramUpdateKey } from './dedupe.js';
-<<<<<<< HEAD
-=======
-import {
-  normalizeAllowFromWithStore,
-  evaluateGroupBaseAccess,
-  resolveRequireMention,
-  hasBotMention,
-  removeBotMention,
-} from '../access-control.js';
-import { generateSessionKey } from '../../commands/session-key.js';
-import { transcribe, isSTTAvailable } from '../../stt/index.js';
-import { getMimeType } from '../../utils/media.js';
->>>>>>> 3579043 (fix: resolve lint warnings and test timing issue)
 import { createLogger } from '../../utils/logger.js';
 
 const log = createLogger('TelegramInboundProcessor');
@@ -164,7 +152,6 @@ async function processMediaItem(
     const downloadUrl = `${accountApiRoot}/file/bot${botToken}/${file.file_path}`;
     const response = await fetch(downloadUrl);
 
-<<<<<<< HEAD
     // Debug log for media download
     log.info({
       type: item.type,
@@ -173,14 +160,11 @@ async function processMediaItem(
       responseStatus: response.status,
     }, 'Media download response');
 
-=======
->>>>>>> bf21ebc (refactor(telegram): improve inbound-processor with DI and reduced nesting)
     if (!response.ok) {
       throw new Error(`Failed to download: ${response.status}`);
     }
 
     const buffer = await response.arrayBuffer();
-<<<<<<< HEAD
 
     // Debug log for buffer size
     log.info({
@@ -197,8 +181,6 @@ async function processMediaItem(
         filePath: file.file_path,
       }, 'Media buffer is empty, may cause issues');
     }
-=======
->>>>>>> bf21ebc (refactor(telegram): improve inbound-processor with DI and reduced nesting)
     let transcribedText = '';
 
     // Handle voice messages with STT
@@ -222,7 +204,6 @@ async function processMediaItem(
     const base64 = Buffer.from(buffer).toString('base64');
     const mimeType = mediaUtils.getMimeType(item.type, file.file_path);
 
-<<<<<<< HEAD
     // Debug log for attachment creation
     log.info({
       type: item.type,
@@ -232,8 +213,6 @@ async function processMediaItem(
       name: file.file_path?.split('/').pop(),
     }, 'Attachment created');
 
-=======
->>>>>>> bf21ebc (refactor(telegram): improve inbound-processor with DI and reduced nesting)
     return {
       attachment: {
         type: item.type,
@@ -393,7 +372,6 @@ export function createInboundProcessor(deps: InboundProcessorDeps) {
         defaultRequireMention: true,
       });
 
-<<<<<<< HEAD
       // For media messages (photo, video, etc.) without caption, check caption entities too.
       // A media message with a bot mention in caption_entities should pass the mention check.
       const hasMedia = !!(message.photo || message.document || message.video || message.audio || message.voice);
@@ -410,11 +388,6 @@ export function createInboundProcessor(deps: InboundProcessorDeps) {
           return;
         }
         log.debug({ accountId, chatId }, 'Group media message without mention - processing anyway');
-=======
-      if (requireMention && !accessControl.hasBotMention({ botUsername, text: content, entities: message.entities })) {
-        log.debug({ accountId, chatId }, 'Group message without mention ignored');
-        return;
->>>>>>> bf21ebc (refactor(telegram): improve inbound-processor with DI and reduced nesting)
       }
     }
 

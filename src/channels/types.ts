@@ -89,6 +89,9 @@ export interface TelegramAccountConfig {
   streamMode?: 'off' | 'partial' | 'block';
   proxy?: string;
   apiRoot?: string;
+  // Markdown rendering options
+  tableMode?: 'off' | 'bullets' | 'code';
+  linkPreview?: boolean;
 }
 
 export interface TelegramChannelConfig {

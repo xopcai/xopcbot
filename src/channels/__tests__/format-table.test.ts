@@ -40,20 +40,10 @@ describe('table rendering', () => {
 |--------|---------|
 | Cell1  | Cell2   |`;
     
-<<<<<<< HEAD
     // Should not throw, should render something
     expect(() => markdownToTelegramHtml(markdown, { 
       tableMode: 'off' 
     })).not.toThrow();
-=======
-    const html = markdownToTelegramHtml(markdown, { 
-      tableMode: 'off' 
-    });
-    
-    // Should not contain special table rendering
-    // The raw markdown pipe characters may or may not be present
-    // depending on how markdown-it handles tables when disabled
->>>>>>> e3a1f8f (refactor(channels): implement OpenClaw-based Markdown to Telegram conversion)
   });
 
   it('should handle complex tables with bullets mode', () => {
@@ -91,13 +81,7 @@ describe('tableMode option', () => {
 | 1 | 2 |`;
     
     // When tableMode is not specified, it defaults to off
-<<<<<<< HEAD
     expect(() => markdownToTelegramHtml(markdown)).not.toThrow();
-=======
-    const html = markdownToTelegramHtml(markdown);
-    // Should not throw, should render something
-    expect(html).toBeDefined();
->>>>>>> e3a1f8f (refactor(channels): implement OpenClaw-based Markdown to Telegram conversion)
   });
 
   it('should accept bullets mode', () => {

@@ -23,11 +23,11 @@ import {
 } from './workspace.js';
 
 // =============================================================================
-// Configuration
+// Configuration (Internal)
 // =============================================================================
 
 /** Maximum characters to inject from workspace files into system prompt */
-export const PROMPT_MAX_CHARS = {
+const PROMPT_MAX_CHARS = {
   SOUL: 8_000,
   USER: 4_000,
   IDENTITY: 2_000,
@@ -496,13 +496,9 @@ export function buildSystemPrompt(
 }
 
 /**
- * Build minimal system prompt for subagents/cron jobs
+ * Build minimal system prompt for subagents/cron jobs (Internal)
  */
-<<<<<<< HEAD
-export function buildMinimalSystemPrompt(
-=======
 function _buildMinimalSystemPrompt(
->>>>>>> d0fc054 (fix: resolve unused variable warnings in lint)
   workspaceDir: string,
   bootstrapFiles: WorkspaceBootstrapFile[]
 ): string {
@@ -514,13 +510,9 @@ function _buildMinimalSystemPrompt(
 }
 
 /**
- * Get bootstrap file by name
+ * Get bootstrap file by name (Internal)
  */
-<<<<<<< HEAD
-export function getBootstrapFile(
-=======
 function _getBootstrapFile(
->>>>>>> d0fc054 (fix: resolve unused variable warnings in lint)
   bootstrapFiles: WorkspaceBootstrapFile[],
   name: string
 ): WorkspaceBootstrapFile | undefined {
@@ -528,13 +520,9 @@ function _getBootstrapFile(
 }
 
 /**
- * Check if specific bootstrap file exists and is loaded
+ * Check if specific bootstrap file exists and is loaded (Internal)
  */
-<<<<<<< HEAD
-export function hasBootstrapFile(
-=======
 function _hasBootstrapFile(
->>>>>>> d0fc054 (fix: resolve unused variable warnings in lint)
   bootstrapFiles: WorkspaceBootstrapFile[],
   name: string
 ): boolean {

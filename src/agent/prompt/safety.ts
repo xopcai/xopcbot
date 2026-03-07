@@ -5,15 +5,7 @@ import { Type, type Static } from '@sinclair/typebox';
 // Safety Schema (Internal)
 // =============================================================================
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-export const SafetyConfigSchema = Type.Object({
-=======
 const _SafetyConfigSchema = Type.Object({
->>>>>>> d0fc054 (fix: resolve unused variable warnings in lint)
-=======
-const SafetyConfigSchema = Type.Object({
->>>>>>> 18a9904 (refactor: aggressive cleanup of unused code (Occam's razor))
   allowExternalActions: Type.Optional(Type.Boolean({ default: false })),
   allowDangerousOperations: Type.Optional(Type.Boolean({ default: false })),
   requireConfirmationForDestructive: Type.Optional(Type.Boolean({ default: true })),
@@ -23,15 +15,7 @@ const SafetyConfigSchema = Type.Object({
   maxShellTimeout: Type.Optional(Type.Number({ default: 300 })), // 5 minutes
 });
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-export type SafetyConfig = Static<typeof SafetyConfigSchema>;
-=======
 type _SafetyConfig = Static<typeof _SafetyConfigSchema>;
->>>>>>> d0fc054 (fix: resolve unused variable warnings in lint)
-=======
-type SafetyConfig = Static<typeof SafetyConfigSchema>;
->>>>>>> 18a9904 (refactor: aggressive cleanup of unused code (Occam's razor))
 
 // =============================================================================
 // Safety Levels (Internal)
@@ -56,15 +40,7 @@ interface SafetyRule {
 // Safety Guidelines (Internal)
 // =============================================================================
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-export const SAFETY_GUIDELINES: SafetyRule[] = [
-=======
 const _SAFETY_GUIDELINES: SafetyRule[] = [
->>>>>>> d0fc054 (fix: resolve unused variable warnings in lint)
-=======
-const SAFETY_GUIDELINES: SafetyRule[] = [
->>>>>>> 18a9904 (refactor: aggressive cleanup of unused code (Occam's razor))
   // Critical - Never do these
   {
     level: SafetyLevel.CRITICAL,

@@ -98,7 +98,7 @@ export function getLogPath(
 /**
  * Get available log files for a date range
  */
-export function getLogFilesForRange(from: Date, to: Date): LogFileMeta[] {
+function getLogFilesForRange(from: Date, to: Date): LogFileMeta[] {
   const allFiles = getLogFiles();
   
   return allFiles.filter(f => {
@@ -490,10 +490,14 @@ export function cleanOldLogs(keepDays: number = 7): {
  * Clean logs by size (keep total under limit)
  */
 <<<<<<< HEAD
+<<<<<<< HEAD
 export function cleanBySize(maxTotalMB: number = 500): {
 =======
 function _cleanBySize(maxTotalMB: number = 500): {
 >>>>>>> d0fc054 (fix: resolve unused variable warnings in lint)
+=======
+function cleanBySize(maxTotalMB: number = 500): {
+>>>>>>> 18a9904 (refactor: aggressive cleanup of unused code (Occam's razor))
   deleted: number;
   freedBytes: number;
   errors: string[];

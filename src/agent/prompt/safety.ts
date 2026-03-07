@@ -2,14 +2,18 @@
 import { Type, type Static } from '@sinclair/typebox';
 
 // =============================================================================
-// Safety Schema
+// Safety Schema (Internal)
 // =============================================================================
 
+<<<<<<< HEAD
 <<<<<<< HEAD
 export const SafetyConfigSchema = Type.Object({
 =======
 const _SafetyConfigSchema = Type.Object({
 >>>>>>> d0fc054 (fix: resolve unused variable warnings in lint)
+=======
+const SafetyConfigSchema = Type.Object({
+>>>>>>> 18a9904 (refactor: aggressive cleanup of unused code (Occam's razor))
   allowExternalActions: Type.Optional(Type.Boolean({ default: false })),
   allowDangerousOperations: Type.Optional(Type.Boolean({ default: false })),
   requireConfirmationForDestructive: Type.Optional(Type.Boolean({ default: true })),
@@ -20,23 +24,27 @@ const _SafetyConfigSchema = Type.Object({
 });
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 export type SafetyConfig = Static<typeof SafetyConfigSchema>;
 =======
 type _SafetyConfig = Static<typeof _SafetyConfigSchema>;
 >>>>>>> d0fc054 (fix: resolve unused variable warnings in lint)
+=======
+type SafetyConfig = Static<typeof SafetyConfigSchema>;
+>>>>>>> 18a9904 (refactor: aggressive cleanup of unused code (Occam's razor))
 
 // =============================================================================
-// Safety Levels
+// Safety Levels (Internal)
 // =============================================================================
 
-export enum SafetyLevel {
+enum SafetyLevel {
   LOW = 'low',
   MEDIUM = 'medium',
   HIGH = 'high',
   CRITICAL = 'critical',
 }
 
-export interface SafetyRule {
+interface SafetyRule {
   level: SafetyLevel;
   category: string;
   description: string;
@@ -45,14 +53,18 @@ export interface SafetyRule {
 }
 
 // =============================================================================
-// Safety Guidelines
+// Safety Guidelines (Internal)
 // =============================================================================
 
+<<<<<<< HEAD
 <<<<<<< HEAD
 export const SAFETY_GUIDELINES: SafetyRule[] = [
 =======
 const _SAFETY_GUIDELINES: SafetyRule[] = [
 >>>>>>> d0fc054 (fix: resolve unused variable warnings in lint)
+=======
+const SAFETY_GUIDELINES: SafetyRule[] = [
+>>>>>>> 18a9904 (refactor: aggressive cleanup of unused code (Occam's razor))
   // Critical - Never do these
   {
     level: SafetyLevel.CRITICAL,
@@ -140,167 +152,7 @@ const _SAFETY_GUIDELINES: SafetyRule[] = [
 ];
 
 // =============================================================================
-// Safety Evaluator
-// =============================================================================
-
-export class SafetyEvaluator {
-  private config: SafetyConfig;
-
-  constructor(config: Partial<SafetyConfig> = {}) {
-    this.config = {
-      allowExternalActions: false,
-      allowDangerousOperations: false,
-      requireConfirmationForDestructive: true,
-      maxFileSize: 10 * 1024 * 1024,
-      maxShellTimeout: 300,
-      ...config,
-    };
-  }
-
-  /**
-   * Evaluate if an action is allowed
-   */
-  evaluate(action: string, category: string): { allowed: boolean; reason?: string; requiresConfirmation?: boolean } {
-    const rule = SAFETY_GUIDELINES.find(
-      r => r.category === category && r.level === SafetyLevel.CRITICAL
-    );
-
-    if (rule) {
-      return {
-        allowed: false,
-        reason: rule.message,
-        requiresConfirmation: false,
-      };
-    }
-
-    // Check high-risk operations
-    const highRule = SAFETY_GUIDELINES.find(
-      r => r.category === category && r.level === SafetyLevel.HIGH
-    );
-
-    if (highRule) {
-      if (this.config.allowDangerousOperations) {
-        return { allowed: true };
-      }
-      
-      return {
-        allowed: this.config.requireConfirmationForDestructive ? false : true,
-        reason: highRule.message,
-        requiresConfirmation: highRule.requiresConfirmation,
-      };
-    }
-
-    return { allowed: true };
-  }
-
-  /**
-   * Check if a file size is acceptable
-   */
-  checkFileSize(size: number): { allowed: boolean; reason?: string } {
-    if (size > this.config.maxFileSize) {
-      return {
-        allowed: false,
-        reason: `File size (${size} bytes) exceeds maximum allowed (${this.config.maxFileSize} bytes)`,
-      };
-    }
-    return { allowed: true };
-  }
-
-  /**
-   * Check if shell timeout is acceptable
-   */
-  checkShellTimeout(seconds: number): { allowed: boolean; reason?: string } {
-    if (seconds > this.config.maxShellTimeout) {
-      return {
-        allowed: false,
-        reason: `Shell timeout (${seconds}s) exceeds maximum allowed (${this.config.maxShellTimeout}s)`,
-      };
-    }
-    return { allowed: true };
-  }
-
-  /**
-   * Check if channel is allowed
-   */
-  checkChannel(channel: string): { allowed: boolean; reason?: string } {
-    if (this.config.allowedChannels && this.config.allowedChannels.length > 0) {
-      if (!this.config.allowedChannels.includes(channel)) {
-        return {
-          allowed: false,
-          reason: `Channel '${channel}' is not in the allowed list`,
-        };
-      }
-    }
-    return { allowed: true };
-  }
-
-  /**
-   * Check if command is blocked
-   */
-  checkCommand(command: string): { allowed: boolean; reason?: string } {
-    if (this.config.blockedCommands) {
-      const normalizedCommand = command.toLowerCase();
-      for (const blocked of this.config.blockedCommands) {
-        if (normalizedCommand.includes(blocked.toLowerCase())) {
-          return {
-            allowed: false,
-            reason: `Command contains blocked pattern: '${blocked}'`,
-          };
-        }
-      }
-    }
-    return { allowed: true };
-  }
-}
-
-// =============================================================================
-// Safety Section Builder
-// =============================================================================
-
-export function buildSafetySection(
-  config?: Partial<SafetyConfig>,
-  includeDetailed: boolean = false
-): string {
-  // SafetyEvaluator(config); // Ready for future use
-  
-  const lines = [
-    '## Safety',
-    '',
-    '### Core Principles',
-    '- I have no independent goals',
-    '- I do not pursue self-preservation, replication, or power-seeking',
-    '- I prioritize safety and human oversight over completion',
-  ];
-
-  if (includeDetailed) {
-    lines.push(
-      '',
-      '### Guidelines',
-      '- If instructions conflict, I pause and ask',
-      '- I comply with stop/pause/audit requests',
-      '- I never bypass safeguards',
-      '- I do not manipulate anyone to expand access',
-      '',
-      '### Confirmation Requirements',
-      'The following require user confirmation:',
-      '- Deleting or overwriting files',
-      '- Modifying system configuration',
-      '- Sending external messages',
-      '- Writing to databases',
-    );
-  }
-
-  return lines.join('\n');
-}
-
-// =============================================================================
-// Singleton Instance
-// =============================================================================
-
-export const defaultSafetyEvaluator = new SafetyEvaluator();
-
-// =============================================================================
-// Convenience Functions
+// Convenience Functions (Exported)
 // =============================================================================
 
 /**
@@ -358,17 +210,4 @@ export function checkShellSafety(command: string): { allowed: boolean; message?:
   }
 
   return { allowed: true };
-}
-
-/**
- * Format safety violation for display
- */
-export function formatSafetyViolation(
-  action: string,
-  result: { allowed: boolean; message?: string }
-): string {
-  if (result.allowed) {
-    return `✅ ${action} is safe`;
-  }
-  return `🚫 ${action}: ${result.message || 'Blocked by safety policy'}`;
 }

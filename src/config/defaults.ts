@@ -10,16 +10,16 @@ import type { ModelDefinitionConfig, ModelProviderConfig } from './types.models.
 // Default Values
 // ============================================
 
-export const DEFAULT_MODEL_COST: ModelDefinitionConfig['cost'] = {
+const DEFAULT_MODEL_COST: ModelDefinitionConfig['cost'] = {
   input: 0,
   output: 0,
   cacheRead: 0,
   cacheWrite: 0,
 };
 
-export const DEFAULT_MODEL_INPUT: ModelDefinitionConfig['input'] = ["text"];
-export const DEFAULT_MODEL_MAX_TOKENS = 8192;
-export const DEFAULT_CONTEXT_TOKENS = 128000;
+const DEFAULT_MODEL_INPUT: ModelDefinitionConfig['input'] = ["text"];
+const DEFAULT_MODEL_MAX_TOKENS = 8192;
+const DEFAULT_CONTEXT_TOKENS = 128000;
 
 // ============================================
 // Helper Functions
@@ -66,15 +66,19 @@ function resolveDefaultProviderApi(
 // Apply Model Defaults
 // ============================================
 
-export interface ApplyModelDefaultsOptions {
+interface ApplyModelDefaultsOptions {
   warn?: (message: string) => void;
 }
 
+<<<<<<< HEAD
 <<<<<<< HEAD
 export function applyModelDefaults(
 =======
 function _applyModelDefaults(
 >>>>>>> d0fc054 (fix: resolve unused variable warnings in lint)
+=======
+function applyModelDefaults(
+>>>>>>> 18a9904 (refactor: aggressive cleanup of unused code (Occam's razor))
   cfg: { models?: { providers?: Record<string, ModelProviderConfig> } },
   _options: ApplyModelDefaultsOptions = {},
 ): { models?: { providers?: Record<string, ModelProviderConfig> } } {
@@ -189,10 +193,14 @@ function _applyModelDefaults(
 // for any code that may still call it, but it just returns the input.
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 export function resolveModelAlias(alias: string): string | null {
 =======
 function _resolveModelAlias(alias: string): string | null {
 >>>>>>> d0fc054 (fix: resolve unused variable warnings in lint)
+=======
+function resolveModelAlias(alias: string): string | null {
+>>>>>>> 18a9904 (refactor: aggressive cleanup of unused code (Occam's razor))
   if (!alias || typeof alias !== 'string') {
     return null;
   }

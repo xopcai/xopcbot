@@ -74,21 +74,6 @@ export {
   configureAuditLog,
   getAuditConfig,
   
-  // Phase 3: Alerts
-  type AlertRule,
-  type AlertCondition,
-  type AlertAction,
-  type Alert,
-  addAlertRule,
-  removeAlertRule,
-  updateAlertRule,
-  getAlertRules,
-  clearAlertRules,
-  startAlertEngine,
-  stopAlertEngine,
-  isAlertEngineRunning,
-  presetRules,
-  
   // Pino re-export
   Pino,
 } from './logger/index.js';

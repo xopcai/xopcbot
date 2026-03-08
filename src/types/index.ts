@@ -24,6 +24,17 @@ export interface OutboundMessage {
   metadata?: Record<string, unknown>;
   /** Request TTS voice message for this text content (Telegram only) */
   tts?: boolean;
+  // Reply support
+  replyToMessageId?: string;
+  quoteText?: string;
+  // Message options
+  silent?: boolean;
+  spoiler?: boolean;
+  // Telegram inline keyboard buttons
+  buttons?: Array<Array<{
+    text: string;
+    callback_data: string;
+  }>>;
 }
 
 export interface Message {

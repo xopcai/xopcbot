@@ -166,6 +166,11 @@ export class AgentService {
       extensionRegistry: config.extensionRegistry,
       getCurrentContext: () => this.sessionContextManager.getContext(),
       bus,
+      getTTSConfig: () => config.config?.tts,
+      getInboundAudio: () => {
+        const ctx = this.sessionContextManager.getContext();
+        return ctx?.metadata?.transcribedVoice === true;
+      },
     });
     const tools = this.toolsFactory.createAllTools();
 
@@ -619,6 +624,10 @@ export class AgentService {
       
       // End and cleanup stream
       await this.streamManager.end();
+      
+      // Send TTS voice message if enabled (for streaming responses)
+      await this.sendTTSIfEnabled(msg, sessionContext);
+      
       this.feedbackCoordinator.endTask();
       
       this.sessionContextManager.clearContext();
@@ -722,6 +731,48 @@ export class AgentService {
       }
     }
     return '';
+  }
+
+  private async sendTTSIfEnabled(msg: InboundMessage, sessionContext: SessionContext): Promise<void> {
+    const ttsConfig = this.config.config?.tts;
+    if (!ttsConfig?.enabled) return;
+
+    const trigger = ttsConfig.trigger || 'off';
+    let shouldSendTTS = false;
+
+    switch (trigger) {
+      case 'off':
+        return;
+      case 'always':
+        shouldSendTTS = true;
+        break;
+      case 'inbound':
+        shouldSendTTS = sessionContext.metadata?.transcribedVoice === true;
+        break;
+      case 'tagged':
+        return;
+    }
+
+    if (!shouldSendTTS) return;
+
+    const finalContent = this.getLastAssistantContent();
+    if (!finalContent?.trim()) return;
+
+    try {
+      await this.bus.publishOutbound({
+        channel: msg.channel,
+        chat_id: msg.chat_id,
+        content: finalContent,
+        type: 'message',
+        tts: true,
+        metadata: {
+          accountId: msg.metadata?.accountId,
+          threadId: msg.metadata?.threadId,
+        },
+      });
+    } catch (error) {
+      log.warn({ error }, 'Failed to send TTS voice message');
+    }
   }
 
   private dispose(): void {

@@ -7,6 +7,7 @@
 import type { AgentTool, AgentToolResult } from '@mariozechner/pi-agent-core';
 import type { ExtensionTool } from '../extensions/types/index.js';
 import type { MessageBus } from '../bus/index.js';
+import type { TTSConfig } from '../tts/index.js';
 import {
   readFileTool,
   writeFileTool,
@@ -34,13 +35,15 @@ export interface ToolFactoryDeps {
   getCurrentContext: () => { channel: string; chatId: string; sessionKey: string } | null;
   bus: MessageBus;
   toolExecutorConfig?: Partial<ToolExecutorConfig>;
+  getTTSConfig?: () => TTSConfig | undefined;
+  getInboundAudio?: () => boolean;
 }
 
 export class AgentToolsFactory {
   constructor(private deps: ToolFactoryDeps) {}
 
   createCoreTools(): AgentTool<any, any>[] {
-    const { workspace, braveApiKey, bus } = this.deps;
+    const { workspace, braveApiKey, bus, getTTSConfig, getInboundAudio } = this.deps;
     
     return [
       readFileTool,
@@ -52,7 +55,12 @@ export class AgentToolsFactory {
       createShellTool(workspace),
       createWebSearchTool(braveApiKey),
       webFetchTool,
-      createMessageTool(bus, () => this.deps.getCurrentContext()),
+      createMessageTool(
+        bus, 
+        () => this.deps.getCurrentContext(),
+        getTTSConfig,
+        getInboundAudio
+      ),
       createSendMediaTool(bus, () => this.deps.getCurrentContext()),
       createMemorySearchTool(workspace),
       createMemoryGetTool(workspace),

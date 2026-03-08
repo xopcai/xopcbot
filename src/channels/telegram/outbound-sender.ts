@@ -5,7 +5,7 @@
  * - Text messages (with chunking)
  * - Data URL media (base64 encoded)
  * - Remote URL media
- * - TTS voice messages
+ * - TTS voice messages (with new TTS service)
  * - Typing indicators
  */
 
@@ -21,7 +21,7 @@ import { sentMessageCache } from './sent-cache.js';
 import { createRetryRunner, isRecoverableNetworkError } from '../../infra/retry.js';
 import { createLogger } from '../../utils/logger.js';
 import { isTelegramHtmlParseError } from './errors.js';
-import { speak, isTTSAvailable } from '../../tts/index.js';
+import { TTSService } from '../../tts/index.js';
 import { compressAudio } from '../../utils/audio.js';
 
 const log = createLogger('TelegramOutboundSender');
@@ -46,6 +46,9 @@ export interface OutboundSenderDeps {
 export function createOutboundSender(deps: OutboundSenderDeps) {
   const { accountManager } = deps;
 
+  // Initialize TTS service if configured
+  const ttsService = deps.config?.tts ? new TTSService(deps.config.tts) : null;
+
   async function send(options: ChannelSendOptions): Promise<ChannelSendResult> {
     const {
       chatId,
@@ -57,9 +60,16 @@ export function createOutboundSender(deps: OutboundSenderDeps) {
       mediaUrl,
       mediaType,
       silent,
+      tts,
     } = options;
 
-    log.info({ chatId, accountId, hasContent: !!content, hasMediaUrl: !!mediaUrl }, 'Sending outbound message');
+    log.debug({ 
+      chatId, 
+      accountId, 
+      hasContent: !!content, 
+      hasMediaUrl: !!mediaUrl,
+      tts,
+    }, 'Sending outbound message');
 
     const bot = accountManager.getBot(accountId);
     if (!bot) {
@@ -106,9 +116,9 @@ export function createOutboundSender(deps: OutboundSenderDeps) {
           silent,
         });
       }
-      // Handle TTS voice
-      else if (options.tts && deps.config?.tts && isTTSAvailable(deps.config.tts)) {
-        sentMessageId = await sendTtsVoice(bot, chatId, content, {
+      // Handle TTS voice with new service
+      else if (options.tts && ttsService?.isEnabled()) {
+        sentMessageId = await sendTtsVoiceWithService(bot, chatId, content, {
           threadId,
           replyToMessageId,
           silent,
@@ -300,22 +310,28 @@ export function createOutboundSender(deps: OutboundSenderDeps) {
     return firstMessageId;
   }
 
-  async function sendTtsVoice(
+  async function sendTtsVoiceWithService(
     bot: Bot,
     chatId: string,
     content: string | undefined,
     options?: { threadId?: string; replyToMessageId?: string; silent?: boolean }
   ): Promise<number> {
-    log.info({ chatId, contentLength: content?.length }, 'Generating TTS voice message');
+    if (!ttsService || !content) {
+      // Fallback to text if TTS not available
+      return sendTextMessage(bot, chatId, content || '', options);
+    }
+
+    log.info({ chatId, contentLength: content.length }, 'Generating TTS voice message');
 
     let sentMessageId: number | undefined;
     let ttsErrorOccurred = false;
 
     for (let attempt = 1; attempt <= TTS_MAX_RETRIES + 1; attempt++) {
       try {
-        const ttsResult = await speak(content || '', deps.config!.tts!);
+        // Direct TTS conversion - decision already made in communication.ts
+        const ttsResult = await ttsService.speak(content, { channel: 'telegram', chatId });
 
-        // Compress audio if it's wav format
+        // Compress audio if needed
         const { buffer: compressedAudio, format: compressedFormat } = await compressAudio(
           Buffer.from(ttsResult.audio),
           ttsResult.format

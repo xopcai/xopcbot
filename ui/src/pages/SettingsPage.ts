@@ -14,6 +14,7 @@ import type { ProviderInfo, ProviderListChangeEvent, ProviderListOAuthEvent } fr
 import '../components/ModelJsonEditor.js';
 import type { ModelsJsonConfig } from '../config/models-json-client.js';
 import { fetchModelsJson, saveModelsJson } from '../config/models-json-client.js';
+import { setToken } from '../utils/storage.js';
 
 export interface SettingsPageConfig {
   token?: string;
@@ -452,6 +453,12 @@ export class SettingsPage extends LitElement {
 
       this._dirty = false;
       this._saveSuccess = true;
+
+      // Also save token to localStorage for frontend use
+      if (this._settings.gateway.auth?.token) {
+        setToken(this._settings.gateway.auth.token);
+      }
+
       setTimeout(() => (this._saveSuccess = false), 3000);
     } catch (err) {
       console.error('Failed to save settings:', err);

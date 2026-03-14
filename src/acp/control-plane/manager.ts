@@ -8,6 +8,8 @@
 import type { Config } from "../../config/schema.js";
 import { createLogger } from "../../utils/logger.js";
 import { AcpRuntimeError, withAcpRuntimeErrorBoundary } from "../runtime/errors.js";
+import { formatAcpErrorText, toAcpErrorText } from "../runtime/error-text.js";
+import { SessionRateLimiter } from "../../infra/rate-limit.js";
 import {
   isSessionIdentityPending,
   resolveSessionIdentityFromMeta,
@@ -64,12 +66,19 @@ export class AcpSessionManager {
   private readonly cacheManager: RuntimeCacheManager;
   private readonly lifecycleManager: SessionLifecycleManager;
   private readonly sessionStore: SessionStore;
+  private readonly rateLimiter: SessionRateLimiter;
   private readonly logger = createLogger("AcpSessionManager");
   private readonly errorCountsByCode = new Map<string, number>();
 
   constructor(private readonly sessionStorePath?: string) {
     const workspace = sessionStorePath || resolveAcpWorkspace({} as Config);
     this.sessionStore = new AcpSessionStore(workspace);
+
+    // Initialize rate limiter with defaults (will be updated when config is available)
+    this.rateLimiter = new SessionRateLimiter({
+      maxRequests: 100,
+      windowMs: 60 * 1000, // 1 minute
+    });
 
     this.cacheManager = new RuntimeCacheManager({
       persistMeta: async (sessionKey, meta) => {
@@ -240,6 +249,15 @@ export class AcpSessionManager {
 
   /** Run Turn */
   async runTurn(input: AcpRunTurnInput): Promise<void> {
+    // Check rate limit
+    const rateLimit = this.rateLimiter.consume(input.sessionKey);
+    if (!rateLimit.allowed) {
+      throw new AcpRuntimeError(
+        "ACP_TURN_FAILED",
+        `Rate limit exceeded. Retry after ${Math.ceil(rateLimit.retryAfterMs / 1000)}s.`
+      );
+    }
+
     await this.evictIdleRuntimeHandles({ cfg: input.cfg });
 
     await this.withSessionActor(input.sessionKey, async () => {

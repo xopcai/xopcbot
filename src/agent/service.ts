@@ -34,6 +34,7 @@ import { FeedbackCoordinator } from './feedback/index.js';
 import { SkillManager } from './skills/index.js';
 import { SystemPromptBuilder } from './prompt/service-prompt-builder.js';
 import { maybeApplyTtsToPayload } from '../tts/payload.js';
+import { createTypingController, type TypingController } from './typing.js';
 
 const log = createLogger('AgentService');
 
@@ -539,19 +540,28 @@ export class AgentService {
         }
       }
 
+      // Start continuous typing indicator (renews every 5 seconds)
+      let typingController: TypingController | null = null;
       if (msg.channel !== 'cli') {
-        this.bus.publishOutbound({
-          channel: msg.channel,
-          chat_id: msg.chat_id,
-          content: '',
-          type: 'typing_on',
-          metadata: {
-            accountId: msg.metadata?.accountId,
-            threadId: msg.metadata?.threadId,
+        typingController = createTypingController({
+          intervalSeconds: 5,
+          onStart: async () => {
+            await this.bus.publishOutbound({
+              channel: msg.channel,
+              chat_id: msg.chat_id,
+              content: '',
+              type: 'typing_on',
+              metadata: {
+                accountId: msg.metadata?.accountId,
+                threadId: msg.metadata?.threadId,
+              },
+            });
           },
-        }).catch(err => {
-          log.warn({ err }, 'Failed to send typing indicator');
+          onStop: async () => {
+            // Telegram doesn't have typing_off, but keep for consistency
+          },
         });
+        typingController.start();
       }
 
       if (this.channelManagerRef && msg.channel !== 'cli') {
@@ -566,12 +576,17 @@ export class AgentService {
         }
       }
 
-      await this.agentOrchestrator.process(msg, sessionContext);
+      try {
+        await this.agentOrchestrator.process(msg, sessionContext);
+      } finally {
+        // Stop typing indicator after processing completes
+        typingController?.stop();
+      }
 
     } finally {
       await this.sessionLifecycleManager.endSession(sessionContext);
       await this.streamManager.end();
-      await this.sendTTSForStreamingResponse(msg, sessionContext);
+      await this.sendFinalResponse(msg, sessionContext);
       this.feedbackCoordinator.endTask();
       this.sessionContextManager.clearContext();
       this.feedbackCoordinator.clearContext();
@@ -674,65 +689,84 @@ export class AgentService {
     return '';
   }
 
-  private async sendTTSForStreamingResponse(
+  private async sendFinalResponse(
     msg: InboundMessage,
     sessionContext: SessionContext
   ): Promise<void> {
+    const finalContent = this.getLastAssistantContent();
+    if (!finalContent?.trim()) return;
+
+    const hookResult = await this.hookHandler.runMessageSending(sessionContext.chatId, finalContent);
+    if (!hookResult.send) return;
+
     const ttsConfig = this.config.config?.tts || {
       enabled: false,
       provider: 'openai' as const,
       trigger: 'always' as const,
     };
 
-    if (!ttsConfig.enabled) return;
-
+    // Check if TTS should be used
     const trigger = ttsConfig.trigger || 'off';
     let shouldSendTTS = false;
 
-    switch (trigger) {
-      case 'off':
-        return;
-      case 'always':
-        shouldSendTTS = true;
-        break;
-      case 'inbound':
-        shouldSendTTS = sessionContext.metadata?.transcribedVoice === true;
-        break;
-      case 'tagged':
-        return;
-    }
-
-    if (!shouldSendTTS) return;
-
-    const finalContent = this.getLastAssistantContent();
-    if (!finalContent?.trim()) return;
-
-    try {
-      const ttsMsg = await maybeApplyTtsToPayload(
-        {
-          channel: msg.channel,
-          chat_id: msg.chat_id,
-          content: finalContent,
-          type: 'message',
-          metadata: {
-            accountId: msg.metadata?.accountId,
-            threadId: msg.metadata?.threadId,
-          },
-        },
-        {
-          config: ttsConfig,
-          channel: msg.channel,
-          inboundAudio: sessionContext.metadata?.transcribedVoice === true,
-        }
-      );
-
-      if (ttsMsg.mediaUrl) {
-        await this.bus.publishOutbound(ttsMsg);
-        log.info('TTS voice message sent');
+    if (ttsConfig.enabled) {
+      switch (trigger) {
+        case 'always':
+          shouldSendTTS = true;
+          break;
+        case 'inbound':
+          shouldSendTTS = sessionContext.metadata?.transcribedVoice === true;
+          break;
+        case 'tagged':
+          shouldSendTTS = /\[\[tts\]\]/i.test(hookResult.content || finalContent);
+          break;
+        default:
+          shouldSendTTS = false;
       }
-    } catch (error) {
-      log.warn({ error }, 'TTS failed');
     }
+
+    if (shouldSendTTS) {
+      // Try to send TTS message
+      try {
+        const ttsMsg = await maybeApplyTtsToPayload(
+          {
+            channel: msg.channel,
+            chat_id: msg.chat_id,
+            content: hookResult.content || finalContent,
+            type: 'message',
+            metadata: {
+              accountId: msg.metadata?.accountId,
+              threadId: msg.metadata?.threadId,
+            },
+          },
+          {
+            config: ttsConfig,
+            channel: msg.channel,
+            inboundAudio: sessionContext.metadata?.transcribedVoice === true,
+          }
+        );
+
+        if (ttsMsg.mediaUrl) {
+          await this.bus.publishOutbound(ttsMsg);
+          log.info('TTS voice message sent');
+          return; // TTS sent successfully, don't send text
+        }
+      } catch (error) {
+        log.warn({ error }, 'TTS failed, falling back to text');
+      }
+    }
+
+    // Send text message (fallback or TTS not enabled)
+    await this.bus.publishOutbound({
+      channel: sessionContext.channel,
+      chat_id: sessionContext.chatId,
+      content: hookResult.content || finalContent,
+      type: 'message',
+      metadata: {
+        accountId: msg.metadata?.accountId,
+        threadId: msg.metadata?.threadId,
+      },
+    });
   }
 
   private dispose(): void {

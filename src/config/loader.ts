@@ -1,7 +1,7 @@
 import { readFileSync, existsSync, mkdirSync, promises as fsPromises } from 'fs';
 import { dirname } from 'path';
 import { Config, ConfigSchema } from './schema.js';
-import { DEFAULT_PATHS } from './paths.js';
+import { resolveEffectiveConfigPath, DEFAULT_PATHS } from './paths.js';
 import { config } from 'dotenv';
 import { createLogger } from '../utils/logger.js';
 
@@ -49,7 +49,7 @@ async function rotateConfigBackups(configPath: string): Promise<void> {
 export function loadConfig(configPath?: string): Config {
   config();
 
-  const path = configPath || process.env.CONFIG_PATH || DEFAULT_PATHS.config;
+  const path = resolveEffectiveConfigPath(configPath);
 
   if (existsSync(path)) {
     try {
@@ -66,7 +66,7 @@ export function loadConfig(configPath?: string): Config {
 }
 
 export async function saveConfig(config: Config, configPath?: string): Promise<void> {
-  const path = configPath || process.env.CONFIG_PATH || DEFAULT_PATHS.config;
+  const path = resolveEffectiveConfigPath(configPath);
 
   const dir = dirname(path);
   if (!existsSync(dir)) {

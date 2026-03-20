@@ -16,3 +16,6 @@ export type { ExtensionRegistry } from './types/core.js';
 
 // Hook System
 export { ExtensionHookRunner, createHookContext, isHookEvent } from './hooks.js';
+
+export * from './lockfile.js';
+export * from './health.js';

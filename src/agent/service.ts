@@ -1,6 +1,7 @@
 import type { AgentEvent, AgentMessage, ThinkingLevel } from '@mariozechner/pi-agent-core';
 import { MessageBusShutdownError, type MessageBus, type InboundMessage } from '../bus/index.js';
 import type { Config, AgentDefaults } from '../config/schema.js';
+import { resolveEffectiveSessionsRoot, resolveAgentId } from '../config/paths.js';
 import type { ChannelManager } from '../channels/manager.js';
 
 import { SessionStore, type CompactionConfig, type WindowConfig } from '../session/index.js';
@@ -107,7 +108,7 @@ export class AgentService {
   constructor(bus: MessageBus, config: AgentServiceConfig) {
     this.bus = bus;
     this.config = config;
-    this.agentId = `agent-${Date.now()}`;
+    this.agentId = resolveAgentId();
     this.workspaceDir = config.workspace;
 
     this.bootstrapFiles = loadBootstrapFiles(config.workspace);
@@ -217,7 +218,8 @@ export class AgentService {
       evictionWindow: sessionStoreDefaults?.compaction?.evictionWindow || 0.2,
       retentionWindow: sessionStoreDefaults?.compaction?.retentionWindow || 6,
     };
-    return new SessionStore(this.config.workspace, windowConfig, compactionConfig);
+    const sessionsRoot = resolveEffectiveSessionsRoot(this.agentId, this.config.workspace);
+    return new SessionStore(sessionsRoot, windowConfig, compactionConfig);
   }
 
   private createHookRunner(): ExtensionHookRunner | undefined {

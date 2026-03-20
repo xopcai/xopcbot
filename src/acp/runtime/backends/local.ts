@@ -24,7 +24,7 @@ import type { MessageBus } from "../../../bus/index.js";
 import type { Config } from "../../../config/schema.js";
 import { SessionStore } from "../../../session/index.js";
 import { resolveModel, getDefaultModel, getApiKey as getProviderApiKey } from "../../../providers/index.js";
-import { getBundledSkillsDir } from "../../../config/paths.js";
+import { getBundledSkillsDir, resolveEffectiveSessionsRoot } from "../../../config/paths.js";
 import { AgentToolsFactory } from "../../../agent/agent-tools-factory.js";
 import { SystemPromptBuilder } from "../../../agent/prompt/service-prompt-builder.js";
 import { SkillManager } from "../../../agent/skills/index.js";
@@ -79,8 +79,8 @@ export class LocalAcpRuntime implements AcpRuntime {
     this.workspace = runtimeConfig?.workspace || process.cwd();
     this.config = runtimeConfig?.config;
 
-    // Initialize session store
-    this.sessionStore = new SessionStore(this.workspace, {
+    const sessionsRoot = resolveEffectiveSessionsRoot(undefined, this.workspace);
+    this.sessionStore = new SessionStore(sessionsRoot, {
       maxMessages: 100,
       keepRecentMessages: 20,
       preserveSystemMessages: true,

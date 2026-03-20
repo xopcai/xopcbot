@@ -37,15 +37,18 @@ export class SessionStore {
   private window: SlidingWindow;
   private compactor: SessionCompactor;
 
+  /**
+   * @param sessionsRoot Directory containing index.json and session *.json (e.g. agents/main/sessions)
+   */
   constructor(
-    workspace: string,
+    sessionsRoot: string,
     windowConfig?: Partial<WindowConfig>,
     compactionConfig?: Partial<CompactionConfig>
   ) {
-    this.baseDir = workspace;
-    this.sessionsDir = join(workspace, '.sessions');
-    this.archiveDir = join(workspace, '.sessions', 'archive');
-    this.indexFile = join(workspace, '.sessions', 'index.json');
+    this.baseDir = sessionsRoot;
+    this.sessionsDir = sessionsRoot;
+    this.archiveDir = join(sessionsRoot, 'archive');
+    this.indexFile = join(sessionsRoot, 'index.json');
     this.window = new SlidingWindow(windowConfig);
     this.compactor = new SessionCompactor(compactionConfig);
   }

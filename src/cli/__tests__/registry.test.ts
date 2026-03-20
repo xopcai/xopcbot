@@ -407,8 +407,8 @@ describe('createDefaultContext', () => {
   it('should create context with defaults', () => {
     const ctx = createDefaultContext();
 
-    expect(ctx.configPath).toContain('.xopcbot/config.json');
-    expect(ctx.workspacePath).toContain('.xopcbot/workspace');
+    expect(ctx.configPath).toMatch(/\.xopcbot\/(xopcbot|config)\.json$/);
+    expect(ctx.workspacePath).toMatch(/\.xopcbot\/(workspace|agents\/main\/workspace)$/);
     expect(ctx.isVerbose).toBe(false);
     expect(ctx.argv).toEqual(process.argv);
   });

@@ -6,8 +6,10 @@ import { flushAndClose } from '../utils/logger.js'; // Import flushAndClose for 
 
 // Import order determines display order in help
 import './commands/setup.js';
+import './commands/init.js';
 import './commands/onboard.js';
 import './commands/agent.js';
+import './commands/agent-manage.js';
 import './commands/gateway.js';
 import './commands/session.js';
 import './commands/cron.js';
@@ -21,7 +23,7 @@ import './commands/acp.js';
 
 
 // Global parsed options - updated before each command
-export let parsedOpts: { config?: string; workspace?: string; verbose?: boolean } = {};
+export let parsedOpts: { config?: string; workspace?: string; profile?: string; verbose?: boolean } = {};
 
 export function getContextWithOpts(argv: string[] = process.argv): CLIContext {
   return createDefaultContext(argv, parsedOpts);
@@ -36,11 +38,20 @@ const program = new Command()
   .version(pkg.version)
   .option('--verbose', 'Enable verbose logging', false)
   .option('--config <path>', 'Config file path')
-  .option('--workspace <path>', 'Workspace directory');
+  .option('--workspace <path>', 'Workspace directory')
+  .option('--profile <name>', 'State profile (sets XOPCBOT_PROFILE)');
 
 // Hook to capture parsed options before each command runs
 program.hook('preAction', (thisCommand) => {
-  parsedOpts = thisCommand.opts();
+  const opts =
+    typeof (thisCommand as { optsWithGlobals?: () => typeof parsedOpts }).optsWithGlobals === 'function'
+      ? (thisCommand as { optsWithGlobals: () => typeof parsedOpts }).optsWithGlobals()
+      : thisCommand.opts();
+  parsedOpts = opts;
+  const p = (opts as { profile?: string }).profile;
+  if (p) {
+    process.env.XOPCBOT_PROFILE = p;
+  }
 });
 
 // Hook to ensure process exits after command completion

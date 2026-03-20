@@ -8,6 +8,11 @@ export type { SessionUsage } from './session-tracker.js';
 export { ModelManager } from './models/index.js';
 export { AgentManager } from './agent-manager.js';
 export type { AgentManagerConfig, AgentInstance } from './agent-manager.js';
+export { AgentRegistry } from './agent-registry.js';
+export type { AgentDescriptor, AgentStatus, CreateAgentOptions } from './agent-registry.js';
+export { SubagentRegistry } from './subagent-registry.js';
+export type { SubagentRun, RunStatus } from './subagent-registry.js';
+export * from './ipc/index.js';
 
 // Legacy helpers (backward compatibility)
 export { loadBootstrapFiles, extractTextContent } from './helpers.js';
@@ -25,6 +30,8 @@ export {
   DEFAULT_BOOTSTRAP_FILENAME,
   DEFAULT_MEMORY_FILENAME,
   DEFAULT_MEMORY_ALT_FILENAME,
+  CONTEXT_FILENAME,
+  SKILLS_FILENAME,
 } from './workspace.js';
 export type { WorkspaceBootstrapFile, WorkspaceBootstrapFileName, WorkspaceOnboardingState } from './workspace.js';
 

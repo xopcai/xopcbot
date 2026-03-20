@@ -1,3 +1,4 @@
+import { dirname } from 'path';
 import { Command } from 'commander';
 import { createLogger } from '../../../utils/logger.js';
 import { getContextWithOpts } from '../../index.js';
@@ -18,7 +19,7 @@ export function createLogsCommand(): Command {
       
       // Determine log directory from environment or default
       const logDir = process.env.XOPCBOT_LOG_DIR || 
-        `${ctx.configPath.replace('/config.json', '')}/logs`;
+        `${dirname(ctx.configPath)}/logs`;
 
       try {
         if (options.follow) {

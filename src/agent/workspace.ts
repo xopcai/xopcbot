@@ -28,6 +28,8 @@ export const DEFAULT_HEARTBEAT_FILENAME = 'HEARTBEAT.md';
 export const DEFAULT_BOOTSTRAP_FILENAME = 'BOOTSTRAP.md';
 export const DEFAULT_MEMORY_FILENAME = 'MEMORY.md';
 export const DEFAULT_MEMORY_ALT_FILENAME = 'memory.md';
+export const CONTEXT_FILENAME = 'CONTEXT.md';
+export const SKILLS_FILENAME = 'SKILLS.md';
 export const DEFAULT_WORKSPACE_STATE_DIR = '.xopcbot';
 export const DEFAULT_WORKSPACE_STATE_FILE = 'workspace-state.json';
 
@@ -44,7 +46,9 @@ export type WorkspaceBootstrapFileName =
   | typeof DEFAULT_HEARTBEAT_FILENAME
   | typeof DEFAULT_BOOTSTRAP_FILENAME
   | typeof DEFAULT_MEMORY_FILENAME
-  | typeof DEFAULT_MEMORY_ALT_FILENAME;
+  | typeof DEFAULT_MEMORY_ALT_FILENAME
+  | typeof CONTEXT_FILENAME
+  | typeof SKILLS_FILENAME;
 
 export interface WorkspaceBootstrapFile {
   name: WorkspaceBootstrapFileName;
@@ -79,6 +83,8 @@ const VALID_BOOTSTRAP_NAMES: ReadonlySet<string> = new Set([
   DEFAULT_BOOTSTRAP_FILENAME,
   DEFAULT_MEMORY_FILENAME,
   DEFAULT_MEMORY_ALT_FILENAME,
+  CONTEXT_FILENAME,
+  SKILLS_FILENAME,
 ]);
 
 export function isValidBootstrapFileName(name: string): boolean {

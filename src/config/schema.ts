@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { homedir } from 'os';
+import { resolveAgentId, resolveWorkspaceDir } from './paths.js';
 
 // ============================================
 // Provider API Keys (simple format only)
@@ -627,13 +628,7 @@ export type AcpConfig = z.infer<typeof AcpConfigSchema>;
 // Helper Functions
 // ============================================
 
-/**
- * 从配置中获取 API key (simple string format only)
- * For rich provider configs, use models.json
- */
-export function getApiKey(config: Config, provider: string): string | undefined {
-  return config.providers?.[provider];
-}
+export { getApiKey } from '../providers/index.js';
 
 /**
  * 解析模型引用
@@ -679,10 +674,13 @@ export function parseModelId(modelId: string): ParsedModelRef {
 export { isProviderConfigured, getConfiguredProviders as listConfiguredProviders } from '../providers/index.js';
 
 /**
- * 获取工作空间路径
+ * Resolve workspace directory (Agent OS: agents/&lt;agentId&gt;/workspace/).
  */
 export function getWorkspacePath(config: Config): string {
-  const workspace = config.agents.defaults.workspace;
+  const workspace = config.agents?.defaults?.workspace?.trim() ?? '';
+  if (workspace === '' || workspace === '~/.xopcbot/workspace') {
+    return resolveWorkspaceDir(resolveAgentId());
+  }
   if (workspace.startsWith('~')) {
     return workspace.replace('~', homedir());
   }

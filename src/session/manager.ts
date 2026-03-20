@@ -2,6 +2,7 @@
 
 import EventEmitter from 'events';
 import { createLogger } from '../utils/logger.js';
+import { resolveEffectiveSessionsRoot } from '../config/paths.js';
 import { SessionStore } from './store.js';
 import type {
   SessionMetadata,
@@ -20,6 +21,9 @@ const log = createLogger('SessionManager');
 
 export interface SessionManagerConfig {
   workspace: string;
+  agentId?: string;
+  /** When set, skips resolveEffectiveSessionsRoot */
+  sessionsRoot?: string;
   windowConfig?: Partial<WindowConfig>;
   compactionConfig?: Partial<CompactionConfig>;
 }
@@ -29,7 +33,10 @@ export class SessionManager extends EventEmitter {
 
   constructor(config: SessionManagerConfig) {
     super();
-    this.store = new SessionStore(config.workspace, config.windowConfig, config.compactionConfig);
+    const sessionsRoot =
+      config.sessionsRoot ??
+      resolveEffectiveSessionsRoot(config.agentId, config.workspace);
+    this.store = new SessionStore(sessionsRoot, config.windowConfig, config.compactionConfig);
   }
 
   async initialize(): Promise<void> {

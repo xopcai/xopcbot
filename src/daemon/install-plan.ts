@@ -21,7 +21,7 @@ export interface InstallPlan {
 function resolveDefaultConfigPath(): string {
   const envConfig = process.env.XOPCBOT_CONFIG;
   if (envConfig) return envConfig;
-  return path.join(homedir(), '.xopcbot', 'config.json');
+  return path.join(homedir(), '.xopcbot', 'xopcbot.json');
 }
 
 /**

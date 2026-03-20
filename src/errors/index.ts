@@ -135,7 +135,7 @@ export class ConfigError extends XopcbotError {
     return new ConfigError(
       'INVALID_CONFIG',
       `Invalid configuration at ${path}: ${reason}`,
-      'Check your config.json or run xopcbot configure'
+      'Check your xopcbot.json or run xopcbot configure'
     );
   }
 

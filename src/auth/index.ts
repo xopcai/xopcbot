@@ -9,6 +9,8 @@
  */
 
 export { AuthStorage, type AuthEntry, type AuthStorageOptions } from './storage.js';
+export { CredentialResolver, resolveApiKeyWithCredentialStore } from './credentials.js';
+export type { OAuthTokenRecord, CredentialProfile } from './credentials.js';
 export * from './oauth/index.js';
 
 // Auth Profiles

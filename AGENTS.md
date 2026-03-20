@@ -787,4 +787,28 @@ console.log(`Errors: ${stats.byLevel.error}`);
 
 ---
 
-_Last updated: 2026-02-26_
+## Cursor Cloud specific instructions
+
+### Services overview
+
+| Service | Command | Port | Notes |
+|---------|---------|------|-------|
+| **CLI (dev)** | `pnpm run dev -- <command>` | — | No build needed; uses tsx |
+| **Gateway (built)** | `pnpm start -- gateway --foreground` | 18790 | Requires `pnpm run build` first; serves Web UI from `dist/gateway/static/root/` |
+| **UI dev server** | `cd ui && pnpm dev` | 5173 | Vite hot-reload for UI development |
+
+### Key caveats
+
+- **Config file required for gateway**: The gateway crashes without `~/.xopcbot/config.json`. Minimal valid config: `{"extensions": {}, "providers": {}}`. The `extensions` field is mandatory because `ExtensionsConfigSchema` is a `z.record()` without a `.default()` in Zod 4.
+- **Web UI in dev mode (`pnpm run dev -- gateway`)**: Static files are not served because `__dirname` resolves to `src/` instead of `dist/`. Use `pnpm start -- gateway` (built version) to serve the Web UI, or run the UI dev server separately (`cd ui && pnpm dev`).
+- **esbuild postinstall**: pnpm may block esbuild's postinstall script. If `tsx` or `vite` fails, run `node node_modules/.pnpm/esbuild@0.27.3/node_modules/esbuild/install.js` and the same for `esbuild@0.21.5`.
+- **No LLM API key needed for tests**: All 1313 unit tests pass without any API keys configured. API keys are only needed for actual agent interactions.
+- **Two separate `pnpm install`s**: Root and `ui/` each have their own `pnpm-lock.yaml` and `node_modules`.
+
+### Standard commands reference
+
+See `package.json` scripts and the [Quick Start](#quick-start) section above for lint (`pnpm lint`), test (`pnpm test`), build (`pnpm run build`), and dev (`pnpm run dev`) commands.
+
+---
+
+_Last updated: 2026-03-20_

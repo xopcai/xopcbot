@@ -10,7 +10,7 @@ import type { ChatRoute } from '../navigation.js';
 import type { GatewayClientConfig, ProgressState, ConnectionState, SessionInfo } from './types.js';
 import { ChatConnection } from './connection.js';
 import { SessionManager } from './session.js';
-import { MessageSender } from './messaging.js';
+import { MessageSender, type MessagingCallbacks, pendingAgentRunStorageKey } from './messaging.js';
 import type { Message } from '../messages/types.js';
 import {
   appendThinkingDelta,
@@ -77,9 +77,15 @@ export class ChatPanel extends LitElement {
 
   override updated(changed: Map<string, unknown>) {
     super.updated(changed);
-    if (changed.has('config') && this.config && this._connState === 'disconnected') {
-      this._initServices();
-      this.connect();
+    if (changed.has('config') && this.config) {
+      if (this._connState === 'disconnected') {
+        this._initServices();
+        this.connect();
+      }
+      // First time config becomes available (e.g. token dialog closed) — load hash route
+      if (changed.get('config') === undefined && this._routeHandled && this.route) {
+        void this._handleRouteChange();
+      }
     }
     if (changed.has('route') && this.route && this._routeHandled) {
       this._handleRouteChange();
@@ -102,6 +108,7 @@ export class ChatPanel extends LitElement {
         this._error = null;
         this._reconnectCount = 0;
         this._loadSessions(false);
+        void this._tryResumePendingRun();
         this.requestUpdate();
       },
       onReconnecting: () => {
@@ -166,6 +173,7 @@ export class ChatPanel extends LitElement {
     }
     if (route.type === 'session') {
       if (route.sessionKey === this._lastLoadedKey) {
+        void this._tryResumePendingRun();
         return;
       }
       await this._loadSessionById(route.sessionKey);
@@ -227,6 +235,11 @@ export class ChatPanel extends LitElement {
       this._atBottom = true;
       this.requestUpdate();
       if (offset === 0) this._scrollToBottom(false);
+      if (offset === 0) {
+        requestAnimationFrame(() => {
+          void this._tryResumePendingRun();
+        });
+      }
     } catch (_err: unknown) {
       if (offset === 0) await this._fallbackToRecent();
     } finally {
@@ -283,6 +296,112 @@ export class ChatPanel extends LitElement {
     return list;
   }
 
+  /** Same chatId string as POST /api/agent body — must match MessageSender storage key. */
+  private _chatIdForAgent(): string | null {
+    return this._sessionKey;
+  }
+
+  private _clearPendingAgentRun(): void {
+    const id = this._chatIdForAgent();
+    if (!id) return;
+    try {
+      sessionStorage.removeItem(pendingAgentRunStorageKey(id));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  private _makeAgentStreamingCallbacks(): MessagingCallbacks {
+    return {
+      onStreamStart: (_runId) => {
+        // runId persistence is handled in MessageSender (same key as request chatId).
+        this._streaming = true;
+        const msg = ensureAssistantMessage(this._streamingMsg, Date.now());
+        this._streamingMsg = cloneMessageForRender(msg);
+        this.requestUpdate();
+        if (this._atBottom) this._scrollToBottom();
+      },
+      onToken: (delta) => this._appendToken(delta),
+      onThinking: (c, isDelta) => this._updateThinking(c, isDelta),
+      onThinkingEnd: () => {
+        if (this._streamingMsg) {
+          const msg = ensureAssistantMessage(this._streamingMsg, Date.now());
+          finalizeStreamingThinking(msg.content);
+          this._streamingMsg = cloneMessageForRender(msg);
+          this.requestUpdate();
+        }
+      },
+      onToolStart: (toolName, args) => {
+        const msg = ensureAssistantMessage(this._streamingMsg, Date.now());
+        appendToolStart(msg.content, toolName, args);
+        this._streamingMsg = cloneMessageForRender(msg);
+        this._streaming = true;
+        this.requestUpdate();
+      },
+      onToolEnd: (toolName, isError, result) => {
+        const msg = ensureAssistantMessage(this._streamingMsg, Date.now());
+        completeTool(msg.content, toolName, isError, result);
+        this._streamingMsg = cloneMessageForRender(msg);
+        this.requestUpdate();
+      },
+      onProgress: (p) => {
+        this._progress = p;
+        this.requestUpdate();
+        if (this._atBottom) this._scrollToBottom();
+      },
+      onResult: () => {
+        this._clearPendingAgentRun();
+        this._finalizeMessage();
+      },
+      onError: (msg) => {
+        this._clearPendingAgentRun();
+        this._error = msg;
+        this._streaming = false;
+        this._isSending = false;
+        this._streamingMsg = null;
+        this._progress = null;
+        this.requestUpdate();
+      },
+    };
+  }
+
+  private async _tryResumePendingRun(): Promise<void> {
+    if (!this._sender || this._isSending || this._streaming) return;
+    const chatId = this._chatIdForAgent();
+    if (!chatId) return;
+    let raw: string | null = null;
+    try {
+      raw = sessionStorage.getItem(pendingAgentRunStorageKey(chatId));
+    } catch {
+      return;
+    }
+    if (!raw) return;
+    let runId: string;
+    try {
+      const p = JSON.parse(raw) as { runId?: string };
+      if (!p.runId) return;
+      runId = p.runId;
+    } catch {
+      this._clearPendingAgentRun();
+      return;
+    }
+
+    this._isSending = true;
+    try {
+      const cb = this._makeAgentStreamingCallbacks();
+      cb.onStreamStart(runId);
+      await this._sender.resume(runId, chatId, cb);
+    } catch (err) {
+      this._clearPendingAgentRun();
+      if ((err as Error).name === 'AbortError') return;
+      const status = (err as Error & { status?: number }).status;
+      if (status === 404) return;
+      console.warn('[ChatPanel] resume failed:', err);
+    } finally {
+      this._isSending = false;
+    }
+  }
+
   async sendMessage(
     content: string,
     attachments?: Array<{ type: string; mimeType?: string; data?: string; name?: string; size?: number }>,
@@ -291,6 +410,7 @@ export class ChatPanel extends LitElement {
     if (this._isSending || this._streaming) return;
     if (!content.trim() && !attachments?.length) return;
     if (!this._sender) return;
+    if (!this._sessionKey) return;
 
     this._isSending = true;
     this._messages = [
@@ -309,54 +429,16 @@ export class ChatPanel extends LitElement {
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 
     try {
-      await this._sender.send(content, this._sessionKey || 'default', attachments, thinkingLevel, {
-        onStreamStart: () => {
-          this._streaming = true;
-          const msg = ensureAssistantMessage(this._streamingMsg, Date.now());
-          this._streamingMsg = cloneMessageForRender(msg);
-          this.requestUpdate();
-          if (this._atBottom) this._scrollToBottom();
-        },
-        onToken: (delta) => this._appendToken(delta),
-        onThinking: (c, isDelta) => this._updateThinking(c, isDelta),
-        onThinkingEnd: () => {
-          if (this._streamingMsg) {
-            const msg = ensureAssistantMessage(this._streamingMsg, Date.now());
-            finalizeStreamingThinking(msg.content);
-            this._streamingMsg = cloneMessageForRender(msg);
-            this.requestUpdate();
-          }
-        },
-        onToolStart: (toolName, args) => {
-          const msg = ensureAssistantMessage(this._streamingMsg, Date.now());
-          appendToolStart(msg.content, toolName, args);
-          this._streamingMsg = cloneMessageForRender(msg);
-          this._streaming = true;
-          this.requestUpdate();
-        },
-        onToolEnd: (toolName, isError, result) => {
-          const msg = ensureAssistantMessage(this._streamingMsg, Date.now());
-          completeTool(msg.content, toolName, isError, result);
-          this._streamingMsg = cloneMessageForRender(msg);
-          this.requestUpdate();
-        },
-        onProgress: (p) => {
-          this._progress = p;
-          this.requestUpdate();
-          if (this._atBottom) this._scrollToBottom();
-        },
-        onResult: () => this._finalizeMessage(),
-        onError: (msg) => {
-          this._error = msg;
-          this._streaming = false;
-          this._isSending = false;
-          this._streamingMsg = null;
-          this._progress = null;
-          this.requestUpdate();
-        },
-      });
+      await this._sender.send(
+        content,
+        this._sessionKey,
+        attachments,
+        thinkingLevel,
+        this._makeAgentStreamingCallbacks(),
+      );
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
+        this._clearPendingAgentRun();
         this._error = err instanceof Error ? err.message : t('errors.sendFailed');
         this._streaming = false;
         this._streamingMsg = null;

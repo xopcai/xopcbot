@@ -2,6 +2,7 @@ import { streamSSE } from 'hono/streaming';
 import type { Context } from 'hono';
 import type { GatewayService } from '../service.js';
 import { createLogger } from '../../utils/logger.js';
+import { buildSessionKey, parseSessionKey } from '../../routing/session-key.js';
 
 const log = createLogger('Hono:SSE');
 
@@ -68,7 +69,8 @@ export function createAgentSSEHandler(config: SSEHandlerConfig) {
 
     const accept = c.req.header('Accept') || '';
     const wantSSE = accept.includes('text/event-stream');
-    const generator = service.runAgent(message, channel, chatId, attachments, thinking);
+    const abortSignal = c.req.raw.signal;
+    const generator = service.runAgent(message, channel, chatId, attachments, thinking, abortSignal);
 
     // --- Non-streaming fallback: collect everything, return JSON ---
     if (!wantSSE) {
@@ -134,6 +136,99 @@ export function createAgentSSEHandler(config: SSEHandlerConfig) {
         }
       } catch (error) {
         log.error({ err: error }, 'Agent run failed (SSE mode)');
+        await stream.writeSSE({
+          id: String(++eventId),
+          event: 'error',
+          data: JSON.stringify({
+            ok: false,
+            error: { code: 'INTERNAL_ERROR', message: error instanceof Error ? error.message : 'Unknown error' },
+          }),
+        });
+      }
+    });
+  };
+}
+
+/**
+ * POST /api/agent/resume — Re-attach SSE to an in-flight webchat run (same events as POST /api/agent).
+ * Body: { runId: string, chatId: string } (chatId must match the session key used when the run started).
+ */
+export function createAgentResumeHandler(config: SSEHandlerConfig) {
+  const { service } = config;
+
+  return async (c: Context) => {
+    const body = await c.req.json().catch(() => null);
+    const runId = body && typeof body === 'object' ? (body as Record<string, unknown>).runId : undefined;
+    const chatId = body && typeof body === 'object' ? (body as Record<string, unknown>).chatId : undefined;
+
+    if (typeof runId !== 'string' || !runId || typeof chatId !== 'string' || !chatId) {
+      return c.json(
+        {
+          ok: false,
+          error: { code: 'BAD_REQUEST', message: 'Missing required fields: runId, chatId' },
+        },
+        400,
+      );
+    }
+
+    if (!service.runRelay.hasRun(runId)) {
+      return c.json(
+        { ok: false, error: { code: 'NOT_FOUND', message: 'Run not found or already finished' } },
+        404,
+      );
+    }
+
+    const parsedKey = parseSessionKey(chatId);
+    const sessionKey = parsedKey
+      ? chatId
+      : buildSessionKey({
+          agentId: 'main',
+          source: 'webchat',
+          accountId: 'default',
+          peerKind: 'direct',
+          peerId: chatId,
+        });
+
+    const expected = service.runRelay.getSessionKey(runId);
+    if (!expected || expected !== sessionKey) {
+      return c.json(
+        { ok: false, error: { code: 'FORBIDDEN', message: 'chatId does not match this run' } },
+        403,
+      );
+    }
+
+    const accept = c.req.header('Accept') || '';
+    if (!accept.includes('text/event-stream')) {
+      return c.json(
+        { ok: false, error: { code: 'BAD_REQUEST', message: 'Accept: text/event-stream required' } },
+        400,
+      );
+    }
+
+    c.header('X-Accel-Buffering', 'no');
+    return streamSSE(c, async (stream) => {
+      let eventId = 0;
+      try {
+        for await (const chunk of service.runRelay.subscribe(runId)) {
+          if (chunk.type === '__result__') {
+            await stream.writeSSE({
+              id: String(++eventId),
+              event: 'result',
+              data: JSON.stringify({
+                ok: true,
+                payload: chunk.payload ?? { status: 'ok', summary: 'Message processed successfully' },
+              }),
+            });
+            break;
+          }
+          await stream.writeSSE({
+            id: String(++eventId),
+            event: (chunk.type as string) || 'message',
+            data: JSON.stringify(chunk),
+          });
+        }
+      } catch (error) {
+        log.error({ err: error, runId }, 'Agent resume stream failed');
         await stream.writeSSE({
           id: String(++eventId),
           event: 'error',

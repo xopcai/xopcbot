@@ -1,8 +1,14 @@
 import type { ProgressState, GatewayClientConfig } from './types.js';
 import { apiUrl, authHeaders } from './helpers.js';
 
+/** Must match ChatPanel resume lookup — same string as JSON `chatId` on /api/agent. */
+export function pendingAgentRunStorageKey(chatId: string): string {
+  return `xopcbot:pendingAgentRun:${chatId}`;
+}
+
 export type MessagingCallbacks = {
-  onStreamStart: () => void;
+  /** First SSE event includes `runId` for POST /api/agent/resume after reconnect. */
+  onStreamStart: (runId?: string) => void;
   onToken: (delta: string) => void;
   onThinking: (content: string, isDelta: boolean) => void;
   onThinkingEnd: () => void;
@@ -15,6 +21,8 @@ export type MessagingCallbacks = {
 
 export class MessageSender {
   private _abort?: AbortController;
+  /** chatId for the in-flight POST /api/agent or /api/agent/resume body (pending run storage). */
+  private _sseChatId?: string;
 
   constructor(private _config: GatewayClientConfig) {}
 
@@ -30,33 +38,77 @@ export class MessageSender {
     callbacks?: MessagingCallbacks,
   ): Promise<void> {
     this._abort = new AbortController();
+    this._sseChatId = chatId;
+    try {
+      const res = await fetch(apiUrl('/api/agent'), {
+        method: 'POST',
+        headers: { ...authHeaders(this._config.token), Accept: 'text/event-stream' },
+        body: JSON.stringify({ message: content, channel: 'webchat', chatId, attachments, thinking: thinkingLevel }),
+        signal: this._abort.signal,
+      });
 
-    const res = await fetch(apiUrl('/api/agent'), {
-      method: 'POST',
-      headers: { ...authHeaders(this._config.token), Accept: 'text/event-stream' },
-      body: JSON.stringify({ message: content, channel: 'webchat', chatId, attachments, thinking: thinkingLevel }),
-      signal: this._abort.signal,
-    });
-
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error(body.error?.message || `HTTP ${res.status}`);
-    }
-
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-
-    const ct = res.headers.get('Content-Type') || '';
-    if (ct.includes('text/event-stream') && res.body) {
-      await this._consumeSSE(res.body, callbacks);
-    } else {
-      const json = await res.json();
-      if (json.ok && json.payload?.content) {
-        callbacks?.onToken(json.payload.content);
-        callbacks?.onResult();
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error?.message || `HTTP ${res.status}`);
       }
-    }
 
-    this._abort = undefined;
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+      const ct = res.headers.get('Content-Type') || '';
+      if (ct.includes('text/event-stream') && res.body) {
+        await this._consumeSSE(res.body, callbacks);
+      } else {
+        const json = await res.json();
+        if (json.ok && json.payload?.content) {
+          callbacks?.onToken(json.payload.content);
+          this._clearPendingRunStorage();
+          callbacks?.onResult();
+        }
+      }
+    } finally {
+      this._sseChatId = undefined;
+      this._abort = undefined;
+    }
+  }
+
+  /**
+   * Re-attach to an in-flight agent run (replay buffered events + live tail).
+   * POST /api/agent/resume — same SSE shape as POST /api/agent.
+   */
+  async resume(
+    runId: string,
+    chatId: string,
+    callbacks?: MessagingCallbacks,
+  ): Promise<void> {
+    this._abort = new AbortController();
+    this._sseChatId = chatId;
+    try {
+      const res = await fetch(apiUrl('/api/agent/resume'), {
+        method: 'POST',
+        headers: { ...authHeaders(this._config.token), Accept: 'text/event-stream' },
+        body: JSON.stringify({ runId, chatId }),
+        signal: this._abort.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        const err = new Error(
+          (body as { error?: { message?: string } }).error?.message || `HTTP ${res.status}`,
+        ) as Error & { status?: number };
+        err.status = res.status;
+        throw err;
+      }
+
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+      const ct = res.headers.get('Content-Type') || '';
+      if (ct.includes('text/event-stream') && res.body) {
+        await this._consumeSSE(res.body, callbacks);
+      }
+    } finally {
+      this._sseChatId = undefined;
+      this._abort = undefined;
+    }
   }
 
   abort(): void {
@@ -111,9 +163,28 @@ export class MessageSender {
       return;
     }
 
+    // Persist runId using the same chatId as the request body (not ChatPanel state).
+    // Also handle payloads where SSE event name is `message` but JSON has type/status + runId.
+    if (
+      this._sseChatId &&
+      parsed &&
+      typeof parsed === 'object' &&
+      parsed.type === 'status' &&
+      typeof parsed.runId === 'string'
+    ) {
+      try {
+        sessionStorage.setItem(
+          pendingAgentRunStorageKey(this._sseChatId),
+          JSON.stringify({ runId: parsed.runId }),
+        );
+      } catch {
+        /* ignore quota / private mode */
+      }
+    }
+
     switch (event) {
       case 'status':
-        cb?.onStreamStart();
+        cb?.onStreamStart(typeof parsed.runId === 'string' ? parsed.runId : undefined);
         break;
       case 'token': {
         const chunk =
@@ -156,9 +227,11 @@ export class MessageSender {
         });
         break;
       case 'result':
+        this._clearPendingRunStorage();
         cb?.onResult();
         break;
       case 'error':
+        this._clearPendingRunStorage();
         cb?.onError(parsed.content || parsed.error?.message || 'Send failed');
         break;
       default: {
@@ -173,6 +246,15 @@ export class MessageSender {
         if (chunk) cb?.onToken(chunk);
         break;
       }
+    }
+  }
+
+  private _clearPendingRunStorage(): void {
+    if (!this._sseChatId) return;
+    try {
+      sessionStorage.removeItem(pendingAgentRunStorageKey(this._sseChatId));
+    } catch {
+      /* ignore */
     }
   }
 }

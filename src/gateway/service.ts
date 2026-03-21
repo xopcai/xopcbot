@@ -28,6 +28,7 @@ const log = createLogger('GatewayService');
 import { registerAcpRuntimeBackend } from '../acp/runtime/registry.js';
 import { createLocalAcpRuntimeBackend } from '../acp/runtime/backends/local.js';
 import { buildSessionKey, parseSessionKey } from '../routing/session-key.js';
+import { AgentRunRelay, type RelayEvent } from './agent-run-relay.js';
 
 // ========== SSE Event System ==========
 
@@ -69,6 +70,9 @@ export class GatewayService {
   private eventCounter = 0;
   private subscribers = new Map<string, EventListener>();
   private eventBuffers = new Map<string, ServiceEvent[]>();
+
+  /** Multicast buffer so POST /api/agent/resume can re-attach to an in-flight run. */
+  readonly runRelay = new AgentRunRelay();
 
   constructor(private serviceConfig: GatewayServiceConfig = {}) {
     this.bus = new MessageBus();
@@ -457,6 +461,7 @@ export class GatewayService {
       size?: number;
     }>,
     thinking?: string,
+    abortSignal?: AbortSignal,
   ): AsyncGenerator<{ type: string; content?: string; status?: string; runId?: string }, { status: string; summary: string }, unknown> {
     const runId = crypto.randomUUID();
 
@@ -475,13 +480,25 @@ export class GatewayService {
           peerKind: 'direct',
           peerId: chatId,
         });
-        
-        try {
-          const eventStream = this.agentService.processDirectStreaming(
-            message, sessionKey, attachments, thinking
-          );
 
-          for await (const event of eventStream) {
+        this.runRelay.ensureRun(runId, sessionKey);
+        this._pumpWebAgentRun(
+          runId,
+          message,
+          sessionKey,
+          attachments,
+          thinking,
+          abortSignal,
+        );
+
+        try {
+          for await (const event of this.runRelay.subscribe(runId)) {
+            if (event.type === '__result__') {
+              const payload = event.payload as { status: string; summary: string } | undefined;
+              return (
+                payload ?? { status: 'ok', summary: 'Message processed successfully' }
+              );
+            }
             yield event as { type: string; content?: string; status?: string; runId?: string };
           }
 
@@ -515,6 +532,61 @@ export class GatewayService {
       log.error({ error }, 'Agent run failed');
       throw error;
     }
+  }
+
+  private _pumpWebAgentRun(
+    runId: string,
+    message: string,
+    sessionKey: string,
+    attachments:
+      | Array<{
+          type: string;
+          mimeType?: string;
+          data?: string;
+          name?: string;
+          size?: number;
+        }>
+      | undefined,
+    thinking: string | undefined,
+    abortSignal: AbortSignal | undefined,
+  ): void {
+    void (async () => {
+      try {
+        const gen = this.agentService.processDirectStreaming(
+          message,
+          sessionKey,
+          attachments,
+          thinking,
+          abortSignal,
+        );
+        while (true) {
+          const { done, value } = await gen.next();
+          if (done) {
+            const payload =
+              (value as unknown as { status: string; summary: string } | undefined) ?? {
+                status: 'ok',
+                summary: 'Message processed successfully',
+              };
+            this.runRelay.publish(runId, { type: '__result__', payload });
+            this.runRelay.complete(runId);
+            return;
+          }
+          this.runRelay.publish(runId, value as RelayEvent);
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log.error({ err, runId }, 'Web agent pump failed');
+        this.runRelay.publish(runId, {
+          type: 'error',
+          content: `Error: ${msg}`,
+        });
+        this.runRelay.publish(runId, {
+          type: '__result__',
+          payload: { status: 'error', summary: msg },
+        });
+        this.runRelay.complete(runId);
+      }
+    })();
   }
 
   /**

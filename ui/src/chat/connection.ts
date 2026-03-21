@@ -46,7 +46,10 @@ export class ChatConnection {
     }
 
     this._eventSource.onerror = () => {
-      if (this._eventSource?.readyState === EventSource.CLOSED) {
+      const es = this._eventSource;
+      if (es?.readyState === EventSource.CLOSED) {
+        es.close();
+        this._eventSource = undefined;
         this._handlePermanentDisconnect();
       } else {
         this._callbacks.onReconnecting();
@@ -60,7 +63,14 @@ export class ChatConnection {
     this._reconnectCount++;
     if (this._reconnectCount > this.maxReconnectAttempts) {
       this._callbacks.onError('Connection failed after max retries');
+      return;
     }
+    const delay = Math.min(5000, 400 + this._reconnectCount * 400);
+    window.setTimeout(() => {
+      if (!this._shouldReconnect) return;
+      if (this._eventSource) return;
+      this.connect();
+    }, delay);
   }
 
   disconnect(): void {

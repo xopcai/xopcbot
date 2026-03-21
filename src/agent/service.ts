@@ -519,6 +519,8 @@ export class AgentService {
       size?: number;
     }>,
     thinking?: string,
+    /** When the HTTP client disconnects (e.g. tab refresh), persist current transcript once. */
+    abortSignal?: AbortSignal,
   ): AsyncGenerator<{ type: string; [key: string]: unknown }, void, unknown> {
     const { channel, chatId } = this.parseSessionKey(sessionKey);
     const context = this.initSessionContext(sessionKey, channel, chatId);
@@ -635,6 +637,18 @@ export class AgentService {
       }
     });
 
+    if (abortSignal) {
+      abortSignal.addEventListener(
+        'abort',
+        () => {
+          void this.persistAgentSessionMessages(sessionKey).catch((err) => {
+            log.warn({ err, sessionKey }, 'Persist on client disconnect failed');
+          });
+        },
+        { once: true },
+      );
+    }
+
     try {
       const loaded = await this.sessionStore.load(sessionKey);
       agent.replaceMessages(this.prepareLoadedSessionMessages(sessionKey, loaded));
@@ -651,6 +665,7 @@ export class AgentService {
           content: messageContent,
           timestamp: Date.now(),
         });
+        await this.persistAgentSessionMessages(sessionKey);
         await agent.waitForIdle();
       })();
 

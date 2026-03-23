@@ -20,3 +20,7 @@ export {
   type EdgeProviderConfig,
   inferEdgeExtension,
 } from './edge.js';
+export { 
+  CosyVoiceProvider, 
+  type CosyVoiceProviderConfig 
+} from './cosyvoice.js';

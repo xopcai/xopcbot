@@ -203,6 +203,8 @@ export {
   EdgeProvider,
   type EdgeProviderConfig,
   inferEdgeExtension,
+  CosyVoiceProvider,
+  type CosyVoiceProviderConfig,
 } from './providers/index.js';
 
 // Re-export factory functions

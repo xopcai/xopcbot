@@ -1,5 +1,5 @@
 import type { TTSProviderInterface, TTSConfig, TTSProvider } from './types.js';
-import { OpenAIProvider, AlibabaProvider, EdgeProvider } from './providers/index.js';
+import { OpenAIProvider, AlibabaProvider, EdgeProvider, CosyVoiceProvider } from './providers/index.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('TTS:Factory');
@@ -53,6 +53,16 @@ export function createSingleProvider(
         volume: config.edge?.volume,
         proxy: config.edge?.proxy,
         timeoutMs: config.edge?.timeoutMs || config.timeoutMs,
+        maxTextLength: config.maxTextLength,
+      });
+    }
+
+    case 'cosyvoice': {
+      return new CosyVoiceProvider({
+        apiUrl: config.cosyvoice?.apiUrl || 'http://localhost:8080',
+        promptText: config.cosyvoice?.promptText,
+        promptAudioPath: config.cosyvoice?.promptAudioPath,
+        timeoutMs: config.timeoutMs,
         maxTextLength: config.maxTextLength,
       });
     }
@@ -141,7 +151,7 @@ export function isProviderConfigured(provider: TTSProvider, config: TTSConfig): 
 
 export function getAvailableProviders(config: TTSConfig): TTSProvider[] {
   const available: TTSProvider[] = [];
-  const allProviders: TTSProvider[] = ['openai', 'alibaba', 'edge'];
+  const allProviders: TTSProvider[] = ['openai', 'alibaba', 'edge', 'cosyvoice'];
 
   for (const provider of allProviders) {
     if (isProviderConfigured(provider, config)) {

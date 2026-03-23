@@ -2,7 +2,7 @@
  * TTS (Text-to-Speech) Types
  */
 
-export type TTSProvider = 'openai' | 'alibaba' | 'edge';
+export type TTSProvider = 'openai' | 'alibaba' | 'edge' | 'cosyvoice';
 
 export type TTSAutoMode = 'off' | 'always' | 'inbound' | 'tagged';
 
@@ -94,6 +94,14 @@ export interface TTSConfig {
     volume?: string;
     proxy?: string;
     timeoutMs?: number;
+  };
+  cosyvoice?: {
+    /** API 服务地址，默认为 http://localhost:8080 */
+    apiUrl?: string;
+    /** 参考语音文本 */
+    promptText?: string;
+    /** 参考语音文件路径（可选） */
+    promptAudioPath?: string;
   };
 }
 

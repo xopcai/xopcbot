@@ -40,11 +40,12 @@ export interface VoiceSectionConfig {
   };
   tts?: {
     enabled: boolean;
-    provider: 'openai' | 'alibaba' | 'edge';
+    provider: 'openai' | 'alibaba' | 'edge' | 'cosyvoice';
     trigger: 'off' | 'always' | 'inbound' | 'tagged';
     alibaba?: { apiKey?: string; model?: string; voice?: string };
     openai?: { apiKey?: string; model?: string; voice?: string };
     edge?: { voice?: string; lang?: string };
+    cosyvoice?: { apiUrl?: string; promptText?: string };
   };
 }
 
@@ -548,6 +549,7 @@ export class VoiceConfigSection extends LitElement {
                   <option value="openai">OpenAI TTS</option>
                   <option value="alibaba">${t('settings.voice.stt.alibaba')}</option>
                   <option value="edge">Microsoft Edge (Free)</option>
+                  <option value="cosyvoice">CosyVoice (Local)</option>
                 </select>
               </div>
 
@@ -665,6 +667,36 @@ export class VoiceConfigSection extends LitElement {
                         `}
                   </select>
                   <p class="field-desc">Microsoft Edge TTS - Free, no API key required</p>
+                </div>
+              ` : ''}
+
+              ${ttsProvider === 'cosyvoice' ? html`
+                <div class="field-group">
+                  <label class="field-label">${t('settings.voice.tts.cosyvoice.apiUrl')}</label>
+                  <input
+                    class="text-input"
+                    type="text"
+                    .value=${this.config.tts?.cosyvoice?.apiUrl || 'http://localhost:8080'}
+                    @change=${(e: Event) => this._updateConfig('tts.cosyvoice.apiUrl', (e.target as HTMLInputElement).value)}
+                    placeholder="http://localhost:8080"
+                  />
+                  <p class="field-desc">CosyVoice API 服务地址</p>
+                </div>
+                <div class="field-group full-width">
+                  <label class="field-label">${t('settings.voice.tts.cosyvoice.promptText')}</label>
+                  <input
+                    class="text-input"
+                    type="text"
+                    .value=${this.config.tts?.cosyvoice?.promptText || '希望你以后能够做的比我还好呦。'}
+                    @change=${(e: Event) => this._updateConfig('tts.cosyvoice.promptText', (e.target as HTMLInputElement).value)}
+                    placeholder="希望你以后能够做的比我还好呦。"
+                  />
+                  <p class="field-desc">参考语音文本，用于指定音色</p>
+                </div>
+                <div class="info-box" style="grid-column: 1 / -1;">
+                  <p><strong>CosyVoice 本地部署：</strong></p>
+                  <p>请确保 CosyVoice API 服务已在本地运行：</p>
+                  <p><code>cd /root/cosyvoice_workspace && python cosyvoice_api.py</code></p>
                 </div>
               ` : ''}
             </div>

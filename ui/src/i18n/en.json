@@ -266,7 +266,11 @@
         "triggerTagged": "Tagged (only with [[tts]] directive)",
         "provider": "Provider",
         "voice": "Voice",
-        "voiceDesc": "Voice ID"
+        "voiceDesc": "Voice ID",
+        "cosyvoice": {
+          "apiUrl": "API URL",
+          "promptText": "Reference Voice Text"
+        }
       },
       "models": {
         "paraformerV1": "paraformer-v1 (16kHz+)",

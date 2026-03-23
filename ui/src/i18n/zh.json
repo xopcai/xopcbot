@@ -266,7 +266,11 @@
         "triggerTagged": "标记（仅使用 [[tts]] 指令时）",
         "provider": "提供商",
         "voice": "音色",
-        "voiceDesc": "音色 ID"
+        "voiceDesc": "音色 ID",
+        "cosyvoice": {
+          "apiUrl": "API 地址",
+          "promptText": "参考语音文本"
+        }
       },
       "models": {
         "paraformerV1": "paraformer-v1 (16kHz+)",

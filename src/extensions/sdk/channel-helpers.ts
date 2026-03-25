@@ -1,5 +1,5 @@
 import type { Command } from 'commander';
-import type { ExtensionRegistry } from '../extensions/types/index.js';
+import type { ExtensionRegistry } from '../types/index.js';
 
 /**
  * Apply all `registerCli` factories collected on the registry to a Commander program.

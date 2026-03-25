@@ -7,7 +7,7 @@
  * - Providing retry hints to agent
  */
 
-import { createLogger } from '../utils/logger.js';
+import { createLogger } from '../../utils/logger.js';
 
 const log = createLogger('ToolErrorTracker');
 

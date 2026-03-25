@@ -2,8 +2,8 @@
  * Channel plugin entry helper for extensions (OpenClaw-style).
  */
 
-import type { ExtensionApi } from '../extensions/types/index.js';
-import type { ChannelPlugin } from '../channels/plugin-types.js';
+import type { ExtensionApi } from '../types/index.js';
+import type { ChannelPlugin } from '../../channels/plugin-types.js';
 
 export interface DefineChannelPluginEntryOptions<TPlugin extends ChannelPlugin> {
   id: string;

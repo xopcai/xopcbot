@@ -12,7 +12,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { readFile, access } from 'fs/promises';
 import { join, extname, basename, resolve, normalize, isAbsolute } from 'path';
-import { createLogger } from '../utils/logger.js';
+import { createLogger } from '../../utils/logger.js';
 
 const log = createLogger('ProjectContext');
 const execAsync = promisify(exec);

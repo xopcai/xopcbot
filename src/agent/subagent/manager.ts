@@ -2,11 +2,11 @@ import { fork, spawn, type ChildProcess } from 'child_process';
 import { mkdir, writeFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { createLogger } from '../utils/logger.js';
-import { resolveAgentDir, resolveRunDir, resolvePidPath, resolveStatusPath } from '../config/paths.js';
-import { getAgentRegistry, createAgent } from './agent-registry.js';
-import { getSubagentRegistry } from './subagent-registry.js';
-import { AgentBus, type SubagentResult } from './ipc/bus.js';
+import { createLogger } from '../../utils/logger.js';
+import { resolveAgentDir, resolveRunDir, resolvePidPath, resolveStatusPath } from '../../config/paths.js';
+import { getAgentRegistry, createAgent } from '../agent-registry.js';
+import { getSubagentRegistry } from './registry.js';
+import { AgentBus, type SubagentResult } from '../ipc/bus.js';
 
 const log = createLogger('SubagentManager');
 
@@ -305,14 +305,14 @@ export class SubagentManager {
       await new Promise((r) => setTimeout(r, 1000));
 
       // Check if socket is available
-      const { AgentSocketClient } = await import('./ipc/socket.js');
+      const { AgentSocketClient } = await import('../ipc/socket.js');
       const client = new AgentSocketClient(agentId);
 
       try {
         await client.connect();
 
         // Send task via socket
-        const { createTaskMessage } = await import('./ipc/types.js');
+        const { createTaskMessage } = await import('../ipc/types.js');
         const msg = createTaskMessage(this.parentAgentId, agentId, task, {
           timeoutMs: options.timeoutMs,
         });

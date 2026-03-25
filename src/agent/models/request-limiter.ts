@@ -7,7 +7,7 @@
  * - Providing graceful degradation when limits are reached
  */
 
-import { createLogger } from '../utils/logger.js';
+import { createLogger } from '../../utils/logger.js';
 
 const log = createLogger('RequestLimiter');
 

@@ -7,7 +7,7 @@
 
 import type { Config } from '../config/schema.js';
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
-import type { ThinkLevel } from '../types/thinking.js';
+import type { ThinkLevel } from '../agent/thinking-types.js';
 
 // ============================================================================
 // Unified Message Format (Platform Agnostic)

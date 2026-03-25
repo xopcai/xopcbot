@@ -5,9 +5,9 @@
  */
 
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
-import type { ExtensionHookRunner } from '../extensions/index.js';
-import { createHookContext, type HookContext } from '../extensions/index.js';
-import { createLogger } from '../utils/logger.js';
+import type { ExtensionHookRunner } from '../../extensions/index.js';
+import { createHookContext, type HookContext } from '../../extensions/index.js';
+import { createLogger } from '../../utils/logger.js';
 
 const log = createLogger('HookHandler');
 

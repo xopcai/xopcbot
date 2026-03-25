@@ -8,7 +8,7 @@
 import type { UnifiedMessage, CommandContext } from './types.js';
 import { commandRegistry } from './registry.js';
 import { createCommandContext } from './context.js';
-import type { MessageBus } from '../bus/index.js';
+import type { MessageBus } from '../infra/bus/index.js';
 import type { SessionStore } from '../session/index.js';
 import type { Config } from '../config/schema.js';
 import { createLogger } from '../utils/logger.js';

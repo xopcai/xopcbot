@@ -10,7 +10,7 @@
  * - Memory search integration in prompt
  */
 
-import type { WorkspaceBootstrapFile } from './workspace.js';
+import type { WorkspaceBootstrapFile } from '../context/workspace.js';
 import {
   DEFAULT_SOUL_FILENAME,
   DEFAULT_USER_FILENAME,
@@ -20,7 +20,7 @@ import {
   DEFAULT_AGENTS_FILENAME,
   DEFAULT_TOOLS_FILENAME,
   stripFrontMatter,
-} from './workspace.js';
+} from '../context/workspace.js';
 
 // =============================================================================
 // Configuration (Internal)

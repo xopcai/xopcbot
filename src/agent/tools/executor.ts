@@ -8,9 +8,9 @@
  */
 
 import type { AgentTool, AgentToolResult } from '@mariozechner/pi-agent-core';
-import { createLogger } from '../utils/logger.js';
-import { executeWithTimeout, TimeoutError } from './timeout-wrapper.js';
-import { withRetry } from '../infra/retry.js';
+import { createLogger } from '../../utils/logger.js';
+import { executeWithTimeout, TimeoutError } from '../lifecycle/timeout-wrapper.js';
+import { withRetry } from '../../infra/retry.js';
 
 const log = createLogger('ToolExecutor');
 

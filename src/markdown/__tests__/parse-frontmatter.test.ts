@@ -1,5 +1,5 @@
 /**
- * Frontmatter utility tests
+ * Full-document frontmatter (YAML + body) tests
  */
 
 import { describe, it, expect } from 'vitest';
@@ -18,7 +18,7 @@ Some markdown content.
 `;
 
     const result = parseFrontmatter(content);
-    
+
     expect(result.frontmatter).toEqual({
       name: 'test-skill',
       description: 'A test skill',
@@ -30,7 +30,7 @@ Some markdown content.
     const content = `---\r\nname: test-skill\r\ndescription: A test skill\r\n---\r\n\r\n# Content here\r\n\r\nSome markdown content.\r\n`;
 
     const result = parseFrontmatter(content);
-    
+
     expect(result.frontmatter).toEqual({
       name: 'test-skill',
       description: 'A test skill',
@@ -47,7 +47,7 @@ Some markdown content.
 `;
 
     const result = parseFrontmatter(content);
-    
+
     expect(result.frontmatter).toEqual({
       name: 'test-skill',
       description: 'A test skill',
@@ -61,7 +61,7 @@ Some content.
 `;
 
     const result = parseFrontmatter(content);
-    
+
     expect(result.frontmatter).toEqual({});
     expect(result.content).toBe('# No frontmatter here\n\nSome content.');
   });
@@ -79,7 +79,7 @@ metadata:
 `;
 
     const result = parseFrontmatter(content);
-    
+
     expect(result.frontmatter.name).toBe('test-skill');
     expect(result.frontmatter.description).toBe('A test skill');
   });
@@ -94,7 +94,7 @@ tags: [test, example, demo]
 `;
 
     const result = parseFrontmatter(content);
-    
+
     // YAML parser correctly handles arrays
     expect(result.frontmatter.tags).toEqual(['test', 'example', 'demo']);
   });
@@ -110,7 +110,7 @@ disabled: false
 `;
 
     const result = parseFrontmatter(content);
-    
+
     expect(result.frontmatter.enabled).toBe(true);
     expect(result.frontmatter.disabled).toBe(false);
   });
@@ -126,7 +126,7 @@ rating: 4.5
 `;
 
     const result = parseFrontmatter(content);
-    
+
     expect(result.frontmatter.version).toBe(1);
     expect(result.frontmatter.rating).toBe(4.5);
   });
@@ -141,7 +141,7 @@ description: 'A "quoted" skill'
 `;
 
     const result = parseFrontmatter(content);
-    
+
     expect(result.frontmatter.name).toBe('test-skill: v1');
     expect(result.frontmatter.description).toBe('A "quoted" skill');
   });
@@ -155,7 +155,7 @@ describe('serializeFrontmatter', () => {
     };
 
     const result = serializeFrontmatter(frontmatter);
-    
+
     expect(result).toContain('---');
     expect(result).toContain('name: test-skill');
     expect(result).toContain('description: A test skill');
@@ -168,7 +168,7 @@ describe('serializeFrontmatter', () => {
     };
 
     const result = serializeFrontmatter(frontmatter);
-    
+
     // Serializes objects as YAML (not JSON)
     expect(result).toContain('version: 1');
   });
@@ -179,7 +179,7 @@ describe('serializeFrontmatter', () => {
     };
 
     const result = serializeFrontmatter(frontmatter);
-    
+
     // serializeFrontmatter only escapes quotes when string contains : or \n
     expect(result).toContain('description: A "quoted" description');
   });

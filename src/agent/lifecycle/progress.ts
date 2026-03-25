@@ -9,7 +9,7 @@
  * - Stream integration for real-time display
  */
 
-import { createLogger } from '../utils/logger.js';
+import { createLogger } from '../../utils/logger.js';
 
 const log = createLogger('ProgressFeedback');
 

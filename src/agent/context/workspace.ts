@@ -10,8 +10,8 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { createLogger } from '../utils/logger.js';
-import { parseFrontmatter } from '../utils/frontmatter.js';
+import { createLogger } from '../../utils/logger.js';
+import { parseFrontmatter } from '../../markdown/frontmatter.js';
 
 const log = createLogger('Workspace');
 
@@ -156,7 +156,7 @@ export async function fileExists(filePath: string): Promise<boolean> {
 
 /**
  * Strip YAML front matter from markdown content.
- * Uses parseFrontmatter from utils/frontmatter for consistent handling.
+ * Uses parseFrontmatter from markdown/frontmatter for consistent handling.
  */
 export function stripFrontMatter(content: string): string {
   return parseFrontmatter(content).content;

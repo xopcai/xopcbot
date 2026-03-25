@@ -6,7 +6,7 @@
 import { mkdir, writeFile } from 'fs/promises';
 import { join, resolve } from 'path';
 import { randomBytes } from 'crypto';
-import { createLogger } from '../utils/logger.js';
+import { createLogger } from '../../utils/logger.js';
 
 const log = createLogger('InboundPersist');
 

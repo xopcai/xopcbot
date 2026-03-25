@@ -5,7 +5,7 @@
  * and the Agent went from task failure to task success"
  */
 
-import { createLogger } from '../utils/logger.js';
+import { createLogger } from '../../utils/logger.js';
 
 const log = createLogger('ToolUsageAnalyzer');
 

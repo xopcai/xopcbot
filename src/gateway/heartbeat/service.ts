@@ -1,6 +1,6 @@
-import { CronService } from '../cron/service.js';
-import { Config } from '../config/index.js';
-import { createLogger } from '../utils/logger.js';
+import { CronService } from '../../cron/service.js';
+import { Config } from '../../config/index.js';
+import { createLogger } from '../../utils/logger.js';
 
 const log = createLogger('HeartbeatService');
 

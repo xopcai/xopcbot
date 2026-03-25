@@ -23,7 +23,7 @@ import { createInterface } from 'readline';
 import { gunzip } from 'zlib';
 import { promisify } from 'util';
 import { Readable } from 'stream';
-import type { LogLevel, LogFileMeta, LogQuery, LogStats, LogEntry } from './logger.types.js';
+import type { LogLevel, LogFileMeta, LogQuery, LogStats, LogEntry } from './types.js';
 
 const gunzipAsync = promisify(gunzip);
 
@@ -537,4 +537,4 @@ export function getLogLevels(): LogLevel[] {
 // ============================================
 
 export { LOG_DIR };
-export type { LogEntry, LogQuery, LogFileMeta, LogStats } from './logger.types.js';
+export type { LogEntry, LogQuery, LogFileMeta, LogStats } from './types.js';

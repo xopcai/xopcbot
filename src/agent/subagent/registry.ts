@@ -1,8 +1,8 @@
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { dirname } from 'path';
-import { createLogger } from '../utils/logger.js';
-import { resolveSubagentRegistryPath } from '../config/paths.js';
+import { createLogger } from '../../utils/logger.js';
+import { resolveSubagentRegistryPath } from '../../config/paths.js';
 
 const log = createLogger('SubagentRegistry');
 

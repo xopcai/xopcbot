@@ -5,7 +5,7 @@
  * to prevent memory leaks in long-running agent instances.
  */
 
-import { createLogger } from '../utils/logger.js';
+import { createLogger } from '../../utils/logger.js';
 
 const log = createLogger('SessionTracker');
 

@@ -7,7 +7,7 @@
  * - Automatic cleanup on disconnect
  */
 
-import type { LogLevel, LogEntry } from './logger.types.js';
+import type { LogLevel, LogEntry } from './types.js';
 export type { LogLevel, LogEntry };
 
 export interface LogStreamOptions {

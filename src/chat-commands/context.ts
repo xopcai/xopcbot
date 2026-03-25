@@ -18,12 +18,12 @@ import type {
 import { getSessionDisplayName } from './session-key.js';
 import type { Config } from '../config/schema.js';
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
-import type { MessageBus } from '../bus/index.js';
+import type { MessageBus } from '../infra/bus/index.js';
 import type { SessionStore, SessionConfigStore } from '../session/index.js';
 import { createLogger } from '../utils/logger.js';
 import { getRoutingInfo } from './session-key.js';
 import { saveConfig } from '../config/loader.js';
-import type { ThinkLevel, ReasoningLevel, VerboseLevel } from '../types/thinking.js';
+import type { ThinkLevel, ReasoningLevel, VerboseLevel } from '../agent/thinking-types.js';
 
 const log = createLogger('CommandContext');
 

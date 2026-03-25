@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { InboundMessage, OutboundMessage } from '../types/index.js';
+import { InboundMessage, OutboundMessage } from '../../channels/transport-types.js';
 
 interface MessageBusEvents {
   inbound: (msg: InboundMessage) => void;

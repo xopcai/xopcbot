@@ -11,8 +11,8 @@
 
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { Model, Api } from '@mariozechner/pi-ai';
-import type { Config } from '../config/schema.js';
-import type { MessageBus } from '../bus/index.js';
+import type { Config } from '../../config/schema.js';
+import type { MessageBus } from '../../infra/bus/index.js';
 import {
   readFileTool,
   writeFileTool,
@@ -27,11 +27,11 @@ import {
   createSendMediaTool,
   createMemorySearchTool,
   createMemoryGetTool,
-} from './tools/index.js';
-import { createImageTool } from './tools/image-tool.js';
-import { createImageGenerateTool } from './tools/image-generate-tool.js';
-import { createLogger } from '../utils/logger.js';
-import { wrapToolsWithProtection, type ToolExecutorConfig } from './tool-executor.js';
+} from './index.js';
+import { createImageTool } from './image-tool.js';
+import { createImageGenerateTool } from './image-generate-tool.js';
+import { createLogger } from '../../utils/logger.js';
+import { wrapToolsWithProtection, type ToolExecutorConfig } from './executor.js';
 
 const log = createLogger('AgentToolsFactory');
 

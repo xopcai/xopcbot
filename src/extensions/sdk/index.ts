@@ -24,7 +24,7 @@ export type {
   ResolvedExtensionConfig,
   ExtensionRuntime,
   ExtensionCliRegistration,
-} from '../extensions/types/index.js';
+} from '../types/index.js';
 
 // ============================================================================
 // Tools (re-exported from @mariozechner/pi-agent-core)
@@ -37,7 +37,7 @@ export type {
   ToolExecutionStartEvent,
   ToolExecutionUpdateEvent,
   ToolExecutionEndEvent,
-} from '../extensions/types/index.js';
+} from '../types/index.js';
 
 // ============================================================================
 // Hooks ( Strongly Typed)
@@ -105,7 +105,7 @@ export type {
   SessionEndContext,
   GatewayStartContext,
   GatewayStopContext,
-} from '../extensions/types/index.js';
+} from '../types/index.js';
 
 // ============================================================================
 //  Typed Event Bus
@@ -122,7 +122,7 @@ export type {
   WildcardHandlerMeta,
   TypedEventBusOptions,
   RequestOptions,
-} from '../extensions/types/index.js';
+} from '../types/index.js';
 
 // ============================================================================
 //  Provider Types
@@ -139,7 +139,7 @@ export type {
   ProviderRegistry,
   BUILTIN_PROVIDERS,
   BuiltinProviderId,
-} from '../extensions/types/index.js';
+} from '../types/index.js';
 
 // ============================================================================
 //  Advanced Features
@@ -155,7 +155,7 @@ export type {
   FlagValue,
   ShortcutConfig,
   ShortcutHandler,
-} from '../extensions/types/index.js';
+} from '../types/index.js';
 
 // ============================================================================
 //  Security Types
@@ -166,7 +166,7 @@ export type {
   SecurityConfig,
   ExtensionSourceOrigin,
   ProvenanceInfo,
-} from '../extensions/security.js';
+} from '../security.js';
 
 // ============================================================================
 //  Slot Types
@@ -176,7 +176,7 @@ export type {
   SlotKey,
   SlotClaim,
   SlotConfig,
-} from '../extensions/slots.js';
+} from '../slots.js';
 
 // ============================================================================
 //  Diagnostics Types
@@ -186,7 +186,7 @@ export type {
   DiagnosticLevel,
   ExtensionDiagnostic,
   ExtensionLoaderCache,
-} from '../extensions/diagnostics.js';
+} from '../diagnostics.js';
 
 // ============================================================================
 // Channels (ChannelPlugin registry)
@@ -196,7 +196,7 @@ export type {
   ChannelPlugin,
   ChannelPluginInitOptions,
   ChannelPluginStartOptions,
-} from '../channels/plugin-types.js';
+} from '../../channels/plugin-types.js';
 
 // ============================================================================
 // HTTP
@@ -206,7 +206,7 @@ export type {
   HttpRequestHandler,
   HttpRequest,
   HttpResponse,
-} from '../extensions/types/index.js';
+} from '../types/index.js';
 
 // ============================================================================
 // Commands
@@ -214,7 +214,7 @@ export type {
 
 export type {
   ExtensionCommand,
-} from '../extensions/types/index.js';
+} from '../types/index.js';
 
 // ============================================================================
 // Services
@@ -222,7 +222,7 @@ export type {
 
 export type {
   ExtensionService,
-} from '../extensions/types/index.js';
+} from '../types/index.js';
 
 // ============================================================================
 // Gateway
@@ -230,17 +230,17 @@ export type {
 
 export type {
   GatewayMethodHandler,
-} from '../extensions/types/index.js';
+} from '../types/index.js';
 
 // ============================================================================
 // Export Classes
 // ============================================================================
 
-export { TypedEventBus } from '../extensions/typed-event-bus.js';
-export { ExtensionRegistryImpl } from '../extensions/loader.js';
-export { ProviderPluginRegistry, getProviderRegistry } from '../providers/plugin-registry.js';
-export { SlotRegistry, getSlotRegistry, registerSlotType } from '../extensions/slots.js';
-export { HOOK_EXECUTION_MODES } from '../extensions/types/hooks.js';
+export { TypedEventBus } from '../typed-event-bus.js';
+export { ExtensionRegistryImpl } from '../loader.js';
+export { ProviderPluginRegistry, getProviderRegistry } from '../../providers/plugin-registry.js';
+export { SlotRegistry, getSlotRegistry, registerSlotType } from '../slots.js';
+export { HOOK_EXECUTION_MODES } from '../types/hooks.js';
 
 export { defineChannelPluginEntry } from './channel-entry.js';
 export { registerExtensionCliProgram } from './channel-helpers.js';
@@ -253,7 +253,7 @@ export {
   ExtensionHookRunner, 
   createHookContext, 
   isHookEvent 
-} from '../extensions/hooks.js';
+} from '../hooks.js';
 
 // ============================================================================
 //  Security Utilities
@@ -266,7 +266,7 @@ export {
   provenanceTracker,
   logSecurityIssue,
   DEFAULT_SECURITY_CONFIG,
-} from '../extensions/security.js';
+} from '../security.js';
 
 // ============================================================================
 //  Diagnostics Utilities
@@ -277,10 +277,10 @@ export {
   getExtensionDiagnostics,
   ExtensionLoaderCacheImpl,
   ExtensionDiagnostics,
-} from '../extensions/diagnostics.js';
+} from '../diagnostics.js';
 
 // ============================================================================
 // Config
 // ============================================================================
 
-export type { Config } from '../types/index.js';
+export type { Config } from '../../config/config-surface.js';

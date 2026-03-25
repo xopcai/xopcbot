@@ -5,7 +5,7 @@
  * Failed tool executions return error messages as tool results to the model"
  */
 
-import { createLogger } from '../utils/logger.js';
+import { createLogger } from '../../utils/logger.js';
 
 const log = createLogger('ErrorPatternMatcher');
 

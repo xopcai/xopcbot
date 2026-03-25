@@ -18,7 +18,7 @@ import {
   type ThinkLevel,
   type ReasoningLevel,
   type VerboseLevel,
-} from '../../types/thinking.js';
+} from '../../agent/thinking-types.js';
 
 // Think command
 const thinkCommand: CommandDefinition = {

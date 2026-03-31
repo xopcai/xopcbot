@@ -113,6 +113,12 @@
     "ws": "^8.19.0",
     "zod": "^4.3.6"
   },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@vscode/ripgrep",
+      "esbuild"
+    ]
+  },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.17",
     "@types/adm-zip": "^0.5.8",

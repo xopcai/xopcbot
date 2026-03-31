@@ -307,4 +307,27 @@ cd web && pnpm run build                  # → ../dist/gateway/static/root (gat
 
 ---
 
-_Last updated: 2026-03-25_
+## Cursor Cloud specific instructions
+
+### Services overview
+
+| Service | Command | Port | Notes |
+|---------|---------|------|-------|
+| CLI (dev) | `pnpm run dev -- <cmd>` | — | Uses `tsx`; no build needed |
+| Gateway | `pnpm run dev -- gateway --foreground` | 18790 | Serves REST API + static web build |
+| Web UI (Vite) | `pnpm run dev:web` | 3000 | Proxies `/api` to gateway; hot-reload |
+
+### Key caveats
+
+- **`pnpm.onlyBuiltDependencies`** in root `package.json` allows `@vscode/ripgrep` and `esbuild` postinstall scripts. Without this, `@vscode/ripgrep` binary is missing at runtime and Vite/esbuild won't work. Do **not** run `pnpm approve-builds` (interactive).
+- **Config file**: the gateway and agent require `~/.xopcbot/xopcbot.json`. If it doesn't exist, create a minimal one with `agents.defaults.model` pointing to a configured provider/model. Use `pnpm run dev -- config show` to verify.
+- **Gateway token**: after creating the config, run `pnpm run dev -- config token --generate` to get an auth token. The gateway must be restarted to pick up a new token.
+- **Model IDs** come from `@mariozechner/pi-ai`. The `pnpm run dev -- models` command lists configured providers and their model IDs. For Kimi, the model IDs are `k2p5` and `kimi-k2-thinking` under provider `kimi-coding`.
+- **Pre-existing test failures**: 4 tests in `src/session/__tests__/` (shard-path and store) fail on `main`. These are not caused by environment issues.
+- **Pre-existing lint errors**: 1 error in `web/src/features/settings/config-api.ts` and 1 warning in `src/agent/tools/image-tool.ts` exist on `main`.
+- **Config hot-reload error**: if `~/.xopcbot/xopcbot.json` doesn't exist when gateway starts, an `ENOENT` error is logged for the file watcher — this is harmless.
+- Standard commands (`pnpm test`, `pnpm run lint`, `pnpm run build`, etc.) are documented in the Quick Start and Testing sections above.
+
+---
+
+_Last updated: 2026-03-31_
